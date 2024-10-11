@@ -3,3 +3,5 @@ __pycache__/
 data/
 
 .dockerignore
+
+test.py
