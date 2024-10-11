@@ -6,12 +6,18 @@ from .model_unet import ContractBlock
 
 class UNetPlusPlus(nn.Module):
     def __init__(
-        self, contract_block: nn.Module, embed_dims: list[int], *args, **kwargs
+        self,
+        contract_block: nn.Module,
+        embed_dims: list[int],
+        number_of_classes: int,
+        *args,
+        **kwargs
     ):
         # embed_dims: [32, 64, 128, 256, 512]
         super(UNetPlusPlus, self).__init__(*args, **kwargs)
 
         self._contract_blk = contract_block
+        self._cls_num = number_of_classes
 
         self._expand_blks = nn.ModuleList()
         for ind, (curr_lvl_ch, next_lvl_ch) in enumerate(
@@ -32,7 +38,7 @@ class UNetPlusPlus(nn.Module):
 
         self._to_logits = ConvBlock(
             in_channels=embed_dims[-5],
-            out_channels=1,
+            out_channels=self._cls_num,
             kernel_size=1,
             bias=False,
             padding=0,
@@ -63,7 +69,7 @@ class UNetPlusPlus(nn.Module):
                 )
 
         logits = self._to_logits(torch.stack(src_list[0][1:], dim=1).mean(dim=1))
-        return logits.squeeze(1)
+        return logits.permute(0, 2, 3, 1)
 
 
 class ConvBlock(nn.Module):
