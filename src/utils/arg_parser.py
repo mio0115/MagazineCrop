@@ -59,7 +59,7 @@ def get_parser():
     )
     parser.add_argument("--augment_factor", type=int, default=5, dest="augment_factor")
     parser.add_argument(
-        "--train", type=bool, action="store_true", dest="train", help="train the model"
+        "--train", action="store_true", dest="train", help="train the model"
     )
 
     # arguments for inference
