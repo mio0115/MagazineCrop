@@ -1,14 +1,111 @@
-from torchvision import transforms as trans
+import math
+
+import torch
+from torchvision.transforms import v2
+import torchvision.transforms as T
+import numpy as np
+import cv2
+
+
+class ImageToArray(object):
+    def __init__(self, normalize=True):
+        self._normalize = normalize
+
+    def __call__(self, img, tgt) -> tuple[np.ndarray, np.ndarray]:
+        if self._normalize:
+            img_tensor = np.array(img, dtype=np.float32) / 255.0
+        else:
+            img_tensor = np.array(img, dtype=np.uint8)
+
+        tgt_tensor = np.array(tgt, dtype=np.int64)
+
+        return img_tensor, tgt_tensor
+
+
+class ColorJitter(object):
+    def __init__(
+        self,
+        brightness: float = 0.0,
+        contrast: float = 0.0,
+        saturation: float = 0.0,
+        hue: float = 0.0,
+    ):
+        self._adjust = T.ColorJitter(
+            brightness=brightness, contrast=contrast, saturation=saturation, hue=hue
+        )
+
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        h, w, ch = img.shape
+        img = self._adjust(img.reshape((ch, h, w))).reshape((h, w, ch))
+
+        return img, tgt
+
+
+class RandomHorizontalFlip(object):
+    def __init__(self, probability=0.5):
+        self._prob = probability
+
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if np.random.rand() < self._prob:
+            img = np.flip(img, axis=1)
+            tgt = np.flip(tgt, axis=1)
+
+        return img, tgt
+
+
+class RandomResizedCrop(object):
+    def __init__(
+        self,
+        size: tuple[int] = (224, 224),
+        scale: tuple[float] = (0.08, 1.0),
+        ratio: tuple[float] = (0.75, 1.333),
+    ):
+        self._size = size
+        self._scale = scale
+        self._ratio = ratio
+
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        height, width, _ = img.shape
+        scale = np.random.uniform(self._scale[0], self._scale[1])
+        ratio = np.random.uniform(self._ratio[0], self._ratio[1])
+        new_height = min(int(height * scale * math.sqrt(ratio)), height)
+        new_width = min(int(width * scale / math.sqrt(ratio)), width)
+
+        min_x = np.random.randint(0, width - new_width + 1)
+        min_y = np.random.randint(0, height - new_height + 1)
+
+        new_img = img[min_y : min_y + new_height, min_x : min_x + new_width, :]
+        new_tgt = tgt[min_y : min_y + new_height, min_x : min_x + new_width]
+
+        resized_img = cv2.resize(new_img, self._size, interpolation=cv2.INTER_NEAREST)
+        resized_tgt = cv2.resize(new_tgt, self._size, interpolation=cv2.INTER_NEAREST)
+
+        return resized_img, resized_tgt
+
+
+class ArrayToTensor(object):
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        img = torch.from_numpy(img) / 255.0
+        tgt = torch.from_numpy(tgt)
+
+        return img, tgt
 
 
 def build_transforms():
-    tr_fn = trans.Compose(
+    tr_fn = v2.Compose(
         [
-            trans.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
-            trans.RandomHorizontalFlip(),
-            trans.RandomResizedCrop(size=(224, 224)),
-            trans.ToTensor(),
-            trans.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+            ImageToArray(normalize=False),
+            RandomHorizontalFlip(),
+            RandomResizedCrop(),
+            ArrayToTensor(),
         ]
     )
 
@@ -16,12 +113,12 @@ def build_transforms():
 
 
 def build_valid_transform():
-    tr_fn = trans.Compose(
+    tr_fn = v2.Compose(
         [
-            trans.Resize(size=(256, 256)),
-            trans.CenterCrop(size=(224, 224)),
-            trans.ToTensor(),
-            trans.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+            ImageToArray(normalize=False),
+            v2.Resize(size=(256, 256)),
+            v2.CenterCrop(size=(224, 224)),
+            ArrayToTensor(),
         ]
     )
 
