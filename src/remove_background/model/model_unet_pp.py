@@ -20,7 +20,6 @@ class UNetPlusPlus(nn.Module):
         super(UNetPlusPlus, self).__init__(*args, **kwargs)
 
         self._contract_blk = contract_block
-        self._cls_num = number_of_classes
 
         self._expand_blks = nn.ModuleList()
         for ind, (curr_lvl_ch, next_lvl_ch) in enumerate(
@@ -29,10 +28,11 @@ class UNetPlusPlus(nn.Module):
             self._expand_blks.append(
                 nn.ModuleList(
                     [
-                        ConvBlock(
+                        DoubleConvBlock(
                             in_channels=curr_lvl_ch * ind + next_lvl_ch,
+                            inter_channels=curr_lvl_ch,
                             out_channels=curr_lvl_ch,
-                            activation_fn=nn.ReLU(),
+                            activation_fn=[nn.ReLU(), None],
                         )
                         for ind in range(1, len(embed_dims) - ind)
                     ]
@@ -41,7 +41,7 @@ class UNetPlusPlus(nn.Module):
 
         self._to_logits = ConvBlock(
             in_channels=embed_dims[-5],
-            out_channels=self._cls_num,
+            out_channels=number_of_classes + 1,  # for dummy class (background)
             kernel_size=1,
             bias=False,
             padding=0,
@@ -195,7 +195,7 @@ class DoubleConvBlock(nn.Module):
 
         if isinstance(bias, bool):
             bias = [bias, bias]
-        if isinstance(activation_fn, [nn.Module, None]):
+        if isinstance(activation_fn, nn.Module) or activation_fn is None:
             activation_fn = [activation_fn, activation_fn]
         if isinstance(kernel_size, int):
             kernel_size = [kernel_size, kernel_size]
@@ -237,12 +237,12 @@ class DoubleConvBlock(nn.Module):
 
 
 def build_unetplusplus(number_of_classes: int = 20) -> UNetPlusPlus:
-    embed_dims = [32, 64, 128, 256, 512]
+    embed_dims = [64, 128, 256, 512, 1024]
 
     return UNetPlusPlus(
         contract_block=ContractBlock(embed_dims=embed_dims),
         embed_dims=embed_dims,
-        number_of_classes=number_of_classes + 1,
+        number_of_classes=number_of_classes,
     )
 
 
