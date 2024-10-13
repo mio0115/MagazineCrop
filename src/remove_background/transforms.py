@@ -63,10 +63,12 @@ class RandomResizedCrop(object):
         size: tuple[int] = (224, 224),
         scale: tuple[float] = (0.08, 1.0),
         ratio: tuple[float] = (0.75, 1.333),
+        number_of_classes: int = 20,
     ):
         self._size = size
         self._scale = scale
         self._ratio = ratio
+        self._num_cls = number_of_classes
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
@@ -83,10 +85,44 @@ class RandomResizedCrop(object):
         new_img = img[min_y : min_y + new_height, min_x : min_x + new_width, :]
         new_tgt = tgt[min_y : min_y + new_height, min_x : min_x + new_width]
 
-        resized_img = cv2.resize(new_img, self._size, interpolation=cv2.INTER_NEAREST)
-        resized_tgt = cv2.resize(new_tgt, self._size, interpolation=cv2.INTER_NEAREST)
+        resized_img = cv2.resize(new_img, self._size, interpolation=cv2.INTER_LINEAR)
+        resized_tgt = cv2.resize(
+            new_tgt, self._size, interpolation=cv2.INTER_NEAREST
+        ).clip(max=self._num_cls)
 
         return resized_img, resized_tgt
+
+
+class Resize(object):
+    def __init__(self, size: tuple[int] = (256, 256), number_of_classes: int = 20):
+        self._size = size
+        self._num_cls = number_of_classes
+
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        resized_img = cv2.resize(img, self._size, interpolation=cv2.INTER_LINEAR)
+        resized_tgt = cv2.resize(tgt, self._size, interpolation=cv2.INTER_NEAREST).clip(
+            max=self._num_cls
+        )
+
+        return resized_img, resized_tgt
+
+
+class CenterCrop(object):
+    def __init__(self, size: tuple[int] = (224, 224)):
+        self._size = size
+
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        h, w, _ = img.shape
+        th, tw = self._size
+
+        i = int(round((h - th) / 2.0))
+        j = int(round((w - tw) / 2.0))
+
+        return img[i : i + th, j : j + tw], tgt[i : i + th, j : j + tw]
 
 
 class ArrayToTensor(object):
@@ -99,12 +135,12 @@ class ArrayToTensor(object):
         return img, tgt
 
 
-def build_transforms():
+def build_transforms(args):
     tr_fn = v2.Compose(
         [
             ImageToArray(normalize=False),
             RandomHorizontalFlip(),
-            RandomResizedCrop(),
+            RandomResizedCrop(size=(224, 224)),
             ArrayToTensor(),
         ]
     )
@@ -112,12 +148,12 @@ def build_transforms():
     return tr_fn
 
 
-def build_valid_transform():
+def build_valid_transform(args):
     tr_fn = v2.Compose(
         [
             ImageToArray(normalize=False),
-            v2.Resize(size=(256, 256)),
-            v2.CenterCrop(size=(224, 224)),
+            Resize(size=(256, 256), number_of_classes=20),
+            CenterCrop(size=(224, 224)),
             ArrayToTensor(),
         ]
     )
