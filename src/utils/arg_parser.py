@@ -57,6 +57,7 @@ def get_parser():
         dest="path_to_valid_data",
         help="path to the validation dataset",
     )
+    parser.add_argument("--augment_factor", type=int, default=5, dest="augment_factor")
     parser.add_argument(
         "--train", type=bool, action="store_true", dest="train", help="train the model"
     )
