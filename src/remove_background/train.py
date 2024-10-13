@@ -21,11 +21,15 @@ def train(
     valid: bool = True,
 ):
     model = model.to(args.device)
+    path_to_save = os.path.join(
+        os.getcwd(), "src", "remove_background", "checkpoints", args.save_as
+    )
 
     best_loss = float("inf")
     for epoch in range(epochs):
         model.train()
-        for data in data_loader["train"]:
+        running_loss = 0.0
+        for ind, data in enumerate(data_loader["train"]):
             src, tgt = data
             src = src.to(args.device)
             tgt = tgt.to(args.device)
@@ -34,14 +38,16 @@ def train(
             logits = model(src)
 
             loss = loss_fn(logits, tgt)
+            running_loss += loss.item()
             loss.backward()
             optimizer.step()
+        avg_loss = running_loss / (ind + 1)
+        print(f"Epoch: {epoch}:\n\tTrain Loss: {avg_loss: .4f}")
 
-        print(f"Epoch: {epoch}, Loss: {loss.item()}")
         if valid:
             model.eval()
             with torch.no_grad():
-                vloss = 0.0
+                running_vloss = 0.0
                 for ind, data in enumerate(data_loader["valid"]):
                     src, tgt = data
                     src = src.to(args.device)
@@ -49,27 +55,15 @@ def train(
 
                     logits = model(src)
                     loss = loss_fn(logits, tgt)
-                    vloss += loss.item()
-                    break
+                    running_vloss += loss.item()
 
-                vloss /= ind + 1
-                if vloss < best_loss:
-                    best_loss = vloss
-                    torch.save(
-                        model.state_dict(),
-                        os.path.join(
-                            os.getcwd(),
-                            "src",
-                            "remove_background",
-                            "checkpoints",
-                            args.save_as,
-                        ),
-                    )
-                    print(
-                        f"Epoch: {epoch}, Loss: {loss.item()}, Best Loss: {best_loss}"
-                    )
-                else:
-                    print(f"Epoch: {epoch}, Loss: {loss.item()}")
+                avg_vloss = running_vloss / (ind + 1)
+                output_avg_vloss = f"\n\tValid Loss: {avg_vloss:.4f}"
+                if avg_vloss < best_loss:
+                    best_loss = avg_vloss
+                    torch.save(model.state_dict(), path_to_save)
+                    output_avg_vloss += ", Saved!"
+                print(output_avg_vloss)
 
 
 if __name__ == "__main__":
@@ -81,10 +75,7 @@ if __name__ == "__main__":
 
     model = build_unetplusplus()
     optimizer = torch.optim.AdamW(
-        [
-            {"params": model._contract_blk.parameters(), "lr": args.backbone_lr},
-            {"params": model._expand_blks.parameters(), "lr": args.backbone_lr},
-        ],
+        model.parameters(),
         lr=args.learning_rate,
     )
     loss_fn = MultiClassDiceLoss(ignore_index=20)
