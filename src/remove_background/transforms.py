@@ -140,7 +140,6 @@ class MaskToBinary(object):
         super(MaskToBinary, self).__init__(*args, **kwargs)
 
         self._num_cls = number_of_classes
-        pass
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
