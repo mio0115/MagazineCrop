@@ -30,10 +30,10 @@ def get_parser():
         help="learning rate for training",
     )
     parser.add_argument(
-        "--backbone_lr",
+        "--lr_backbone",
         type=float,
         default=1e-4,
-        dest="backbone_lr",
+        dest="lr_backbone",
         help="learning rate for backbone",
     )
     parser.add_argument(
@@ -43,20 +43,20 @@ def get_parser():
         dest="device",
         help="device to train the model on",
     )
-    parser.add_argument(
-        "--path_to_train_data",
-        type=str,
-        default="./data/train_data",
-        dest="path_to_train_data",
-        help="path to the training dataset",
-    )
-    parser.add_argument(
-        "--path_to_valid_data",
-        type=str,
-        default="./data/valid_data",
-        dest="path_to_valid_data",
-        help="path to the validation dataset",
-    )
+    # parser.add_argument(
+    #     "--path_to_train_data",
+    #     type=str,
+    #     default="./data/train_data",
+    #     dest="path_to_train_data",
+    #     help="path to the training dataset",
+    # )
+    # parser.add_argument(
+    #     "--path_to_valid_data",
+    #     type=str,
+    #     default="./data/valid_data",
+    #     dest="path_to_valid_data",
+    #     help="path to the validation dataset",
+    # )
     parser.add_argument(
         "--save_as", type=str, default="model_state.pth", dest="save_as"
     )
