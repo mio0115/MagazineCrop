@@ -135,12 +135,30 @@ class ArrayToTensor(object):
         return img, tgt
 
 
+class MaskToBinary(object):
+    def __init__(self, number_of_classes: int, *args, **kwargs):
+        super(MaskToBinary, self).__init__(*args, **kwargs)
+
+        self._num_cls = number_of_classes
+        pass
+
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        # convert to binary mask
+        # 0: background, 1: foreground
+        tgt = (tgt < self._num_cls).astype(np.int64)
+
+        return img, tgt
+
+
 def build_transforms(args):
     tr_fn = v2.Compose(
         [
             ImageToArray(normalize=False),
             RandomHorizontalFlip(),
             RandomResizedCrop(size=(224, 224)),
+            MaskToBinary(number_of_classes=20),
             ArrayToTensor(),
         ]
     )
@@ -154,6 +172,7 @@ def build_valid_transform(args):
             ImageToArray(normalize=False),
             Resize(size=(256, 256), number_of_classes=20),
             CenterCrop(size=(224, 224)),
+            MaskToBinary(number_of_classes=20),
             ArrayToTensor(),
         ]
     )
