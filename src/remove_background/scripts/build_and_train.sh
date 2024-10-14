@@ -37,7 +37,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 echo "Building Docker image..."
-docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f Dockerfile_train .
+docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f $(pwd)/src/remove_background/dockerfile_train .
 docker image prune -f
 
 if [[ $? -ne 0 ]]; then
