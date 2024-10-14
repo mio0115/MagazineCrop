@@ -1,6 +1,6 @@
-__pycache__/
+test.py
 
 data/
 checkpoints/
 
-test.py
+__pycache__/
