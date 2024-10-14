@@ -8,7 +8,7 @@ from .model.model_unet_pp import build_unetplusplus
 from .datasets import MyVOCSegmentation
 from .transforms import build_transforms, build_valid_transform
 from ..utils.arg_parser import get_parser
-from .loss import MultiClassDiceLoss
+from .loss import ComboLoss
 
 
 def train(
@@ -73,12 +73,12 @@ if __name__ == "__main__":
     path_to_train = os.path.join(os.getcwd(), "data", "train_data")
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
-    model = build_unetplusplus()
+    model = build_unetplusplus(number_of_classes=1)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
     )
-    loss_fn = MultiClassDiceLoss(ignore_index=20)
+    loss_fn = ComboLoss(number_of_classes=1)
     train_dataset = MyVOCSegmentation(
         root=path_to_train,
         image_set="train",
