@@ -58,7 +58,7 @@ def get_parser():
     #     help="path to the validation dataset",
     # )
     parser.add_argument(
-        "--save_as", type=str, default="model_state.pth", dest="save_as"
+        "--save_as", type=str, default="rm_bg_unetpp.pth", dest="save_as"
     )
     parser.add_argument("--augment_factor", type=int, default=5, dest="augment_factor")
     parser.add_argument(

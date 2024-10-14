@@ -22,9 +22,7 @@ def train(
 ):
     print("Training model...")
     model = model.to(args.device)
-    path_to_save = os.path.join(
-        os.getcwd(), "src", "remove_background", "checkpoints", args.save_as
-    )
+    path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
 
     best_loss = float("inf")
     for epoch in range(epochs):
