@@ -21,6 +21,7 @@ def train(
     valid: bool = True,
 ):
     print("Training model...")
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.95)
     model = model.to(args.device)
     path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
 
@@ -40,8 +41,9 @@ def train(
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
+            scheduler.step()
         avg_loss = running_loss / (ind + 1)
-        print(f"Epoch: {epoch}:\n\tTrain Loss: {avg_loss: .4f}")
+        print(f"Epoch: {epoch}:\n\tTrain Loss: {avg_loss:.4f}")
 
         if valid:
             model.eval()
