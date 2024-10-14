@@ -20,6 +20,7 @@ def train(
     epochs: int,
     valid: bool = True,
 ):
+    print("Training model...")
     model = model.to(args.device)
     path_to_save = os.path.join(
         os.getcwd(), "src", "remove_background", "checkpoints", args.save_as

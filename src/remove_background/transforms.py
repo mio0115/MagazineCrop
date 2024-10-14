@@ -156,7 +156,7 @@ def build_transforms(args):
         [
             ImageToArray(normalize=False),
             RandomHorizontalFlip(),
-            RandomResizedCrop(size=(224, 224)),
+            RandomResizedCrop(size=(512, 512)),
             MaskToBinary(number_of_classes=20),
             ArrayToTensor(),
         ]
@@ -169,8 +169,8 @@ def build_valid_transform(args):
     tr_fn = v2.Compose(
         [
             ImageToArray(normalize=False),
-            Resize(size=(256, 256), number_of_classes=20),
-            CenterCrop(size=(224, 224)),
+            Resize(size=(512, 512), number_of_classes=20),
+            CenterCrop(size=(496, 496)),
             MaskToBinary(number_of_classes=20),
             ArrayToTensor(),
         ]
