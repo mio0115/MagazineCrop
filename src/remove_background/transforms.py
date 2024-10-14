@@ -146,7 +146,7 @@ class MaskToBinary(object):
     ) -> tuple[np.ndarray, np.ndarray]:
         # convert to binary mask
         # 0: background, 1: foreground
-        tgt = (tgt < self._num_cls).astype(np.int64)
+        tgt = (tgt > 0).astype(np.int64)
 
         return img, tgt
 
