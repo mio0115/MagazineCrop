@@ -1,0 +1,4 @@
+torch==2.4.1
+torchvision==0.19.1
+opencv-python-headless==4.10.0.84
+numpy==2.1.2
