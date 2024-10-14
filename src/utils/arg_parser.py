@@ -15,7 +15,7 @@ def get_parser():
     )
     parser.add_argument(
         "-bs",
-        "--batch-size",
+        "--batch_size",
         type=int,
         default=12,
         dest="batch_size",
@@ -23,7 +23,7 @@ def get_parser():
     )
     parser.add_argument(
         "-lr",
-        "--learning-rate",
+        "--learning_rate",
         type=float,
         default=1e-3,
         dest="learning_rate",
