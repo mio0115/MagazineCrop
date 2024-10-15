@@ -4,7 +4,7 @@ from torch import nn
 import torch
 from torchvision import models as tv_models
 
-from .model_unet import ContractBlock
+from .blocks import DoubleConvBlock, ConvBlock, ContractBlock
 
 
 class UNetPlusPlus(nn.Module):
@@ -32,6 +32,7 @@ class UNetPlusPlus(nn.Module):
                             in_channels=curr_lvl_ch * ind + next_lvl_ch,
                             inter_channels=curr_lvl_ch,
                             out_channels=curr_lvl_ch,
+                            bias=False,
                             activation_fn=[nn.ReLU(), None],
                         )
                         for ind in range(1, len(embed_dims) - ind)
@@ -147,99 +148,9 @@ class ModifiedUNetPlusPlus(nn.Module):
         return logits.permute(0, 2, 3, 1)
 
 
-class ConvBlock(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int | tuple[int] = 3,
-        padding: int | tuple[int] = 1,
-        stride: int | tuple[int] = 1,
-        bias: bool = True,
-        activation_fn: nn.Module = None,
-    ):
-        super(ConvBlock, self).__init__()
-        self._conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            padding=padding,
-            stride=stride,
-            bias=bias,
-        )
-        self._bn = nn.BatchNorm2d(out_channels)
-        self._activation_fn = activation_fn
-
-    def forward(self, src: torch.Tensor) -> torch.Tensor:
-        src = self._conv(src)
-        src = self._bn(src)
-        if self._activation_fn is not None:
-            src = self._activation_fn(src)
-
-        return src
-
-
-class DoubleConvBlock(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        inter_channels: int,
-        out_channels: int,
-        kernel_size: int | tuple[int] = 3,
-        padding: int | tuple[int] = 1,
-        stride: int | tuple[int] = 1,
-        bias: bool | list[bool] = True,
-        activation_fn: Optional[nn.Module | list[nn.Module]] = None,
-        *args,
-        **kwargs
-    ):
-        super(DoubleConvBlock, self).__init__(*args, **kwargs)
-
-        if isinstance(bias, bool):
-            bias = [bias, bias]
-        if isinstance(activation_fn, nn.Module) or activation_fn is None:
-            activation_fn = [activation_fn, activation_fn]
-        if isinstance(kernel_size, int):
-            kernel_size = [kernel_size, kernel_size]
-        if isinstance(padding, int):
-            padding = [padding, padding]
-        if isinstance(stride, int):
-            stride = [stride, stride]
-
-        channels = [in_channels, inter_channels, out_channels]
-
-        self._conv_blocks = nn.ModuleList(
-            [
-                ConvBlock(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=ks,
-                    padding=p,
-                    stride=s,
-                    bias=b,
-                    activation_fn=a,
-                )
-                for in_channels, out_channels, ks, p, s, b, a in zip(
-                    channels[:-1],
-                    channels[1:],
-                    kernel_size,
-                    padding,
-                    stride,
-                    bias,
-                    activation_fn,
-                )
-            ]
-        )
-
-    def forward(self, src: torch.Tensor) -> torch.Tensor:
-        for conv_block in self._conv_blocks:
-            src = conv_block(src)
-
-        return src
-
-
-def build_unetplusplus(number_of_classes: int = 20) -> UNetPlusPlus:
-    embed_dims = [64, 128, 256, 512, 1024]
+def build_unetplusplus(
+    number_of_classes: int = 20, embed_dims: list[int] = [32, 64, 128, 256, 512]
+) -> UNetPlusPlus:
 
     return UNetPlusPlus(
         contract_block=ContractBlock(embed_dims=embed_dims),
