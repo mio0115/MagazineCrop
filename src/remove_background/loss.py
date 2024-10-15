@@ -37,13 +37,9 @@ class MultiClassDiceLoss(nn.Module):
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         if self._all_cls == 1:
-            conf_scores = torch.sigmoid(logits)
+            conf_scores = logits.sigmoid()
         else:
-            conf_scores = torch.softmax(logits, dim=-1)
-
-        # reshape conf_scores and targets to (B, H * W, C)
-        conf_scores = conf_scores.flatten(1, 2)
-        targets = targets.flatten(1, 2)
+            conf_scores = logits.softmax(dim=-1)
 
         # to one-hot
         if self._all_cls > 1:
@@ -64,7 +60,7 @@ class MultiClassDiceLoss(nn.Module):
                 self._bin_dice_loss(conf_scores[..., cls_ind], oh_target[..., cls_ind])
             )
 
-        loss = torch.stack(loss, dim=1).mean(dim=-1).mean(dim=0)
+        loss = torch.stack(loss, dim=1).mean(-1).mean()
 
         return loss
 
@@ -90,6 +86,6 @@ class ComboLoss(nn.Module):
             ce_loss = self._ce_loss(flatten_logits.squeeze(-1), flatten_targets.float())
         else:
             ce_loss = self._ce_loss(flatten_logits, flatten_targets)
-        dice_loss = self._dice_loss(logits, targets)
+        dice_loss = self._dice_loss(flatten_logits, flatten_targets)
 
         return self._alpha * ce_loss + dice_loss
