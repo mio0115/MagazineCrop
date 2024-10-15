@@ -10,6 +10,9 @@ from .transforms import build_transforms, build_valid_transform
 from ..utils.arg_parser import get_parser
 from .loss import ComboLoss
 
+# to download model's weights, execute the following command:
+# scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
+
 
 def train(
     args,
