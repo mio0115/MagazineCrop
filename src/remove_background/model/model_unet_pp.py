@@ -43,12 +43,13 @@ class UNetPlusPlus(nn.Module):
         # add one more class for dummy class (background) if the number of classes is greater than 1
         all_classes: int = number_of_classes + (1 if number_of_classes > 1 else 0)
         self._to_logits = ConvBlock(
-            in_channels=embed_dims[-5],
+            in_channels=embed_dims[0],
             out_channels=all_classes,
             kernel_size=1,
             bias=False,
             padding=0,
         )
+        self._weights = nn.Parameter(torch.ones(4, dtype=torch.float32))
 
         self._upsample = nn.Upsample(
             scale_factor=2, mode="bilinear", align_corners=True
@@ -74,8 +75,13 @@ class UNetPlusPlus(nn.Module):
                     )
                 )
 
-        logits = self._to_logits(torch.stack(src_list[0][1:], dim=1).mean(dim=1))
-        return logits.permute(0, 2, 3, 1)
+        feature_maps = torch.stack(src_list[0][1:], dim=1)
+        weighted_features = torch.sum(
+            self._weights.softmax(-1).view(1, -1, 1, 1, 1) * feature_maps, dim=1
+        )
+
+        logits = self._to_logits(weighted_features)
+        return logits.permute(0, 2, 3, 1).contiguous()
 
 
 class ModifiedUNetPlusPlus(nn.Module):
