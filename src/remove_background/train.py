@@ -41,6 +41,7 @@ def train(
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
+            break
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
@@ -58,12 +59,16 @@ def train(
                     logits = model(src)
                     loss = loss_fn(logits, tgt)
                     running_vloss += loss.item()
+                    break
 
                 avg_vloss = running_vloss / (ind + 1)
                 output_avg_vloss = f"\n\tValid Loss: {avg_vloss:.4f}"
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
+                    print(f"{path_to_save} saved!")
                     torch.save(model.state_dict(), path_to_save)
+                    print(os.getcwd())
+                    print(os.listdir(os.path.join(os.getcwd(), "checkpoints")))
                     output_avg_vloss += ", Saved!"
                 print(output_avg_vloss)
 
