@@ -42,12 +42,11 @@ class UNetPlusPlus(nn.Module):
 
         # add one more class for dummy class (background) if the number of classes is greater than 1
         all_classes: int = number_of_classes + (1 if number_of_classes > 1 else 0)
-        self._to_logits = ConvBlock(
+        self._to_logits = nn.Conv2d(
             in_channels=embed_dims[0],
             out_channels=all_classes,
             kernel_size=1,
             bias=False,
-            padding=0,
         )
         self._weights = nn.Parameter(torch.ones(4, dtype=torch.float32))
 
