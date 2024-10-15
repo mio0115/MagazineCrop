@@ -41,7 +41,8 @@ def train(
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
-            scheduler.step()
+
+        scheduler.step()
         avg_loss = running_loss / (ind + 1)
         print(f"Epoch: {epoch}:\n\tTrain Loss: {avg_loss:.4f}")
 
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     )
     dataloader = {
         "train": DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True),
-        "valid": DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True),
+        "valid": DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False),
     }
 
     train(
