@@ -47,7 +47,7 @@ def train(
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
-        print(f"Epoch: {epoch}:\n\tTrain Loss: {avg_loss:.4f}")
+        print(f"Epoch {epoch+1:>2}:\n\tTrain Loss: {avg_loss:.4f}")
 
         if valid:
             model.eval()
