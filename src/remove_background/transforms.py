@@ -177,3 +177,15 @@ def build_valid_transform(args):
     )
 
     return tr_fn
+
+
+def build_scanned_transforms():
+    tr_fn = v2.Compose(
+        [
+            RandomHorizontalFlip(),
+            RandomResizedCrop(size=(512, 512), scale=(0.25, 1.0)),
+            ArrayToTensor(),
+        ]
+    )
+
+    return tr_fn
