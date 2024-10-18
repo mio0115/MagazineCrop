@@ -15,7 +15,9 @@ RESUME_FROM="model_weights.pth"
 DEVICE="cuda"
 SAVE_AS="rm_bg_unetpp.pth"
 CLS_NUM=20
+RESUME_FROM="rm_bg_unetpp_pretrained.pth"
 TRAIN=""
+RESUME=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -30,7 +32,9 @@ while [[ "$#" -gt 0 ]]; do
         --resume) RESUME="--resume" ;;
         --device) DEVICE="$2"; shift;;
         --save_as) SAVE_AS="$2"; shift;;
+        --resume_from) RESUME_FROM="$2"; shift;;
         --train) TRAIN="--train" ;;
+        --resume) RESUME="--resume" ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -61,7 +65,9 @@ docker run --rm -it \
             --batch_size=${BATCH_SIZE} \
             --device=${DEVICE} \
             --save_as=${SAVE_AS} \
-            ${TRAIN}
+            --resume_from=${RESUME_FROM} \
+            ${TRAIN} \
+            ${RESUME} \
 
 if [ $? -ne 0 ]; then
     echo "Docker run failed. Exiting."
