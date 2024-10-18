@@ -64,6 +64,13 @@ def get_parser():
     parser.add_argument(
         "--train", action="store_true", dest="train", help="train the model"
     )
+    parser.add_argument("--resume", action="store_true", dest="resume")
+    parser.add_argument(
+        "--resume_from",
+        type=str,
+        default="rm_bg_unetpp_pretrained.pth",
+        dest="resume_from",
+    )
 
     # arguments for inference
     parser.add_argument(
@@ -79,7 +86,7 @@ def get_parser():
     parser.add_argument(
         "--path_to_model_dir",
         type=str,
-        default="./remove_background/checkpoints",
+        default="./src/remove_background/checkpoints",
         dest="path_to_model_dir",
         help="path to the directory placed trained model",
     )

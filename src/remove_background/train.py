@@ -5,8 +5,12 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from .model.model_unet_pp import build_unetplusplus
-from .datasets import MyVOCSegmentation
-from .transforms import build_transforms, build_valid_transform
+from .datasets import MyVOCSegmentation, MagazineCropDataset
+from .transforms import (
+    build_transforms,
+    build_valid_transform,
+    build_scanned_transforms,
+)
 from ..utils.arg_parser import get_parser
 from .loss import ComboLoss
 
@@ -84,17 +88,36 @@ if __name__ == "__main__":
         lr=args.learning_rate,
     )
     loss_fn = ComboLoss(number_of_classes=1)
-    train_dataset = MyVOCSegmentation(
-        root=path_to_train,
-        image_set="train",
-        transforms=build_transforms(args),
-        augment_factor=args.augment_factor,
+
+    if args.resume:
+        model.load_state_dict(
+            torch.load(
+                os.path.join(
+                    os.getcwd(),
+                    "checkpoints",
+                    args.resume_from,
+                ),
+                weights_only=True,
+            )
+        )
+
+    # train_dataset = MyVOCSegmentation(
+    #     root=path_to_train,
+    #     image_set="train",
+    #     transforms=build_transforms(args),
+    #     augment_factor=args.augment_factor,
+    # )
+    # valid_dataset = MyVOCSegmentation(
+    #     root=path_to_valid,
+    #     image_set="val",
+    #     transforms=build_valid_transform(args),
+    #     augment_factor=1,
+    # )
+    train_dataset = MagazineCropDataset(
+        split="train", transforms=build_scanned_transforms()
     )
-    valid_dataset = MyVOCSegmentation(
-        root=path_to_valid,
-        image_set="val",
-        transforms=build_valid_transform(args),
-        augment_factor=1,
+    valid_dataset = MagazineCropDataset(
+        split="valid", transforms=build_scanned_transforms()
     )
     dataloader = {
         "train": DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True),
