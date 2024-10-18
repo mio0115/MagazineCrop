@@ -59,8 +59,11 @@ class MagazineCropDataset(Dataset):
             height=annotation["imageHeight"],
             width=annotation["imageWidth"],
         )
-
-        img, mask = self._transforms(image, mask)
+        try:
+            img, mask = self._transforms(image, mask)
+        except Exception as e:
+            print(mask.shape, image.shape)
+            print(e, key)
 
         return img, mask
 
