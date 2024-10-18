@@ -48,7 +48,6 @@ def train(
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
-            break
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
@@ -66,7 +65,6 @@ def train(
                     logits = model(src)
                     loss = loss_fn(logits, tgt)
                     running_vloss += loss.item()
-                    break
 
                 avg_vloss = running_vloss / (ind + 1)
                 output_avg_vloss = f"\n\tValid Loss: {avg_vloss:.4f}"
