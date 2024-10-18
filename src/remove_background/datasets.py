@@ -1,5 +1,6 @@
 import os
 import json
+from PIL import Image
 
 import cv2
 from torch.utils.data import Dataset
@@ -53,17 +54,14 @@ class MagazineCropDataset(Dataset):
         key = self._keys[index % self._orig_len]
 
         annotation = self._annotations[key]
-        image = cv2.imread(os.path.join(self._path_to_root, annotation["imagePath"]))
+        image = Image.open(os.path.join(self._path_to_root, annotation["imagePath"]))
         mask = polygon_to_mask(
             polygon=annotation["shapes"][0]["points"],
             height=annotation["imageHeight"],
             width=annotation["imageWidth"],
         )
-        try:
-            img, mask = self._transforms(image, mask)
-        except Exception as e:
-            print(mask.shape, image.shape)
-            print(e, key)
+
+        img, mask = self._transforms(image, mask)
 
         return img, mask
 
