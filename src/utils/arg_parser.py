@@ -76,12 +76,12 @@ def get_parser():
     parser.add_argument(
         "--path_to_image_dir",
         type=str,
-        default="./data/example/no1-0818_132552.tiff",
+        default="./data/example",
         dest="path_to_image_dir",
         help="path to the input image directory",
     )
     parser.add_argument(
-        "--image_name", type=str, default="image.tiff", dest="image_name"
+        "--image_name", type=str, default="no1-0818_132552.tiff", dest="image_name"
     )
     parser.add_argument(
         "--path_to_model_dir",
