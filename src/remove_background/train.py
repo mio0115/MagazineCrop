@@ -67,13 +67,13 @@ def train(
                     running_vloss += loss.item()
 
                 avg_vloss = running_vloss / (ind + 1)
-                output_avg_vloss = f"\n\tValid Loss: {avg_vloss:.4f}"
+                output_avg_vloss = f"\tValid Loss: {avg_vloss:.4f}"
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
                     torch.save(model.state_dict(), path_to_save)
                     output_avg_vloss += ", Saved!"
                 print(output_avg_vloss)
-                print(f"\tBest Loss: {best_loss:.4f}")
+                print(f"\tBest Loss : {best_loss:.4f}")
 
 
 if __name__ == "__main__":
