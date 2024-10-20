@@ -61,9 +61,10 @@ class MagazineCropDataset(Dataset):
             width=annotation["imageWidth"],
         )
 
-        img, mask = self._transforms(image, mask)
+        if self._transforms is not None:
+            image, mask = self._transforms(image, mask)
 
-        return img, mask
+        return image, mask
 
 
 if __name__ == "__main__":
