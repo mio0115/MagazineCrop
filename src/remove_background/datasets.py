@@ -54,12 +54,17 @@ class MagazineCropDataset(Dataset):
         key = self._keys[index % self._orig_len]
 
         annotation = self._annotations[key]
-        image = Image.open(os.path.join(self._path_to_root, annotation["imagePath"]))
+        image = cv2.imread(
+            os.path.join(self._path_to_root, annotation["imagePath"]),
+            cv2.IMREAD_GRAYSCALE,
+        )
         mask = polygon_to_mask(
             polygon=annotation["shapes"][0]["points"],
             height=annotation["imageHeight"],
             width=annotation["imageWidth"],
         )
+
+        image = cv2.equalizeHist(image)[..., None]
 
         if self._transforms is not None:
             image, mask = self._transforms(image, mask)
