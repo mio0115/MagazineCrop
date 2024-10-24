@@ -25,7 +25,7 @@ class MultiClassDiceLoss(nn.Module):
         ignore_index: int = -1,
         smooth: float = 1,
         *args,
-        **kwargs
+        **kwargs,
     ):
         super(MultiClassDiceLoss, self).__init__(*args, **kwargs)
 
@@ -74,13 +74,17 @@ class ComboLoss(nn.Module):
         self._binary = number_of_classes == 1
 
         if number_of_classes == 1:
-            self._ce_loss = nn.BCEWithLogitsLoss()
+            self._ce_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))
         else:
             self._ce_loss = nn.CrossEntropyLoss()
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         flatten_logits = logits.flatten(1, 2)
         flatten_targets = targets.flatten(1, 2)
+
+        print(
+            f"logits shape: {flatten_logits.squeeze(-1).shape}, targets shape: {flatten_targets.shape}"
+        )
 
         if self._binary:
             ce_loss = self._ce_loss(flatten_logits.squeeze(-1), flatten_targets.float())
