@@ -57,6 +57,14 @@ class RandomHorizontalFlip(object):
         return img, tgt
 
 
+class PrintShape(object):
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        print(img.shape, tgt.shape)
+        return img, tgt
+
+
 class RandomResizedCrop(object):
     def __init__(
         self,
@@ -89,6 +97,9 @@ class RandomResizedCrop(object):
         resized_tgt = cv2.resize(
             new_tgt, self._size, interpolation=cv2.INTER_NEAREST
         ).clip(max=self._num_cls)
+
+        if img.ndim > resized_img.ndim:
+            resized_img = resized_img[..., None]
 
         return resized_img, resized_tgt
 
@@ -182,7 +193,6 @@ def build_valid_transform(args):
 def build_scanned_transforms():
     tr_fn = v2.Compose(
         [
-            ImageToArray(normalize=False),
             RandomHorizontalFlip(),
             RandomResizedCrop(size=(512, 512), scale=(0.25, 1.0)),
             ArrayToTensor(),
