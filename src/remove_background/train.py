@@ -3,6 +3,7 @@ import os
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+import numpy as np
 
 from .model.model_unet_pp import build_unetplusplus
 from .datasets import MyVOCSegmentation, MagazineCropDataset
@@ -13,6 +14,7 @@ from .transforms import (
 )
 from ..utils.arg_parser import get_parser
 from .loss import ComboLoss
+from .metrics import BinaryMetrics
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
@@ -48,10 +50,19 @@ def train(
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
+            break
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
-        print(f"Epoch {epoch+1:>2}:\n\tTrain Loss: {avg_loss:.4f}")
+        print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<11}: {avg_loss:.4f}")
+
+        metrics = {
+            "pixel_acc": 0.0,
+            "dice": 0.0,
+            "precision": 0.0,
+            "specificity": 0.0,
+            "recall": 0.0,
+        }
 
         if valid:
             model.eval()
@@ -64,16 +75,31 @@ def train(
 
                     logits = model(src)
                     loss = loss_fn(logits, tgt)
+                    new_metrics: dict[str, torch.Tensor] = BinaryMetrics()(
+                        y_pred=logits, y_true=tgt
+                    )
+
+                    for key in new_metrics.keys():
+                        metrics[key] += new_metrics[key].item()
+
                     running_vloss += loss.item()
+                    break
 
                 avg_vloss = running_vloss / (ind + 1)
-                output_avg_vloss = f"\tValid Loss: {avg_vloss:.4f}"
+                for key in metrics.keys():
+                    metrics[key] /= ind + 1
+
+                output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.4f}\n"
+                for key in metrics.keys():
+                    output_avg_vloss += f"\t{key:<11}: {metrics[key]:.4f}\n"
+                output_avg_vloss += "\n"
+
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
                     torch.save(model.state_dict(), path_to_save)
-                    output_avg_vloss += ", Saved!"
+                    output_avg_vloss += "\tNew best loss, Saved!"
                 print(output_avg_vloss)
-                print(f"\tBest Loss : {best_loss:.4f}")
+                print(f"\t{'Best Loss':<11}: {best_loss:.4f}")
 
 
 if __name__ == "__main__":
