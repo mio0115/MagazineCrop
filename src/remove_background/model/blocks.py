@@ -5,10 +5,10 @@ from torch import nn
 
 
 class ContractBlock(nn.Module):
-    def __init__(self, embed_dims: list[int], *args, **kwargs):
+    def __init__(self, input_dim: int, embed_dims: list[int], *args, **kwargs):
         super(ContractBlock, self).__init__(*args, **kwargs)
 
-        self._embed_dims = [3] + embed_dims  # (3, 64, 128, 256, 512, 1024)
+        self._embed_dims = [input_dim] + embed_dims  # (3, 64, 128, 256, 512, 1024)
 
         self._conv_blocks = nn.ModuleList()
         for in_channels, out_channels in zip(
