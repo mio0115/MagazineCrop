@@ -50,7 +50,6 @@ def train(
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
-            break
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
@@ -83,7 +82,6 @@ def train(
                         metrics[key] += new_metrics[key].item()
 
                     running_vloss += loss.item()
-                    break
 
                 avg_vloss = running_vloss / (ind + 1)
                 for key in metrics.keys():
