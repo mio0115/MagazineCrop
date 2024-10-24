@@ -3,6 +3,8 @@ from enum import Enum
 import numpy as np
 import cv2
 
+from ..utils.misc import scharr_edge_detection
+
 
 class ImageType(Enum):
     TALL = 0
