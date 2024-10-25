@@ -43,20 +43,6 @@ def get_parser():
         dest="device",
         help="device to train the model on",
     )
-    # parser.add_argument(
-    #     "--path_to_train_data",
-    #     type=str,
-    #     default="./data/train_data",
-    #     dest="path_to_train_data",
-    #     help="path to the training dataset",
-    # )
-    # parser.add_argument(
-    #     "--path_to_valid_data",
-    #     type=str,
-    #     default="./data/valid_data",
-    #     dest="path_to_valid_data",
-    #     help="path to the validation dataset",
-    # )
     parser.add_argument(
         "--save_as", type=str, default="rm_bg_unetpp.pth", dest="save_as"
     )
