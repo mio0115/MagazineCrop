@@ -18,15 +18,16 @@ if __name__ == "__main__":
 
     path_to_images = os.path.join(os.getcwd(), "data", "example")
 
-    image = cv2.imread(os.path.join(path_to_images, args.image_name))
+    image = cv2.imread(
+        os.path.join(path_to_images, args.image_name), cv2.IMREAD_GRAYSCALE
+    )
     # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     resized_image = cv2.resize(image, (2048, 2048))
-    _, thres_image = cv2.threshold(
-        cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY), 0, 255, cv2.THRESH_OTSU
-    )
+    eh_image = cv2.equalizeHist(resized_image)
+
     # cv2.imshow("original image", cv2.cvtColor(resized_image, cv2.COLOR_RGB2BGR))
     cv2.imshow("original image", resized_image)
-    cv2.imshow("thresholded image", thres_image)
+    cv2.imshow("thresholded image", eh_image)
 
     model = build_unetplusplus(number_of_classes=1)
     model.load_state_dict(
@@ -38,16 +39,11 @@ if __name__ == "__main__":
     model.eval()
 
     with torch.no_grad():
-        in_image = (
-            torch.tensor(cv2.cvtColor(thres_image, cv2.COLOR_GRAY2BGR))
-            .unsqueeze(0)
-            .float()
-            / 255.0
-        )
+        in_image = torch.tensor(eh_image).unsqueeze(0).unsqueeze(-1).float() / 255.0
         in_image = in_image.to(args.device)
         logits = model(in_image)
         is_fg_prob = logits.sigmoid().squeeze().cpu().numpy()
-        fg_mask = is_fg_prob >= 0.5
+        fg_mask = is_fg_prob >= 0.4
 
         print(np.unique(fg_mask))
 
