@@ -11,7 +11,7 @@ LEARNING_RATE_BACKBONE=1e-4
 AUGMENT_FACTOR=10
 EPOCHS=10
 BATCH_SIZE=12
-RESUME_FROM="model_weights.pth"
+RESUME_FROM="sp_pg_model.pth"
 DEVICE="cuda"
 SAVE_AS="sp_pg_model.pth"
 CLS_NUM=20
@@ -41,7 +41,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 echo "Building Docker image..."
-docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f $(pwd)/src/remove_background/dockerfile_train .
+docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f $(pwd)/src/split_page/dockerfile_train .
 docker image prune -f
 
 if [[ $? -ne 0 ]]; then
@@ -54,10 +54,10 @@ echo "Start Docker container..."
 docker run --rm -it \
         --name ${CONTAINER_NAME} \
         -v $(pwd)/data:${WORKDIR}/data \
-        -v $(pwd)/src/remove_background/checkpoints:${WORKDIR}/checkpoints \
+        -v $(pwd)/src/split_page/checkpoints:${WORKDIR}/checkpoints \
         --gpus all \
         ${IMAGE_NAME}:${IMAGE_TAG} \
-        python -m src.remove_background.train \
+        python -m src.split_page.train \
             --learning_rate=${LEARNING_RATE} \
             --lr_backbone=${LEARNING_RATE_BACKBONE} \
             --augment_factor=${AUGMENT_FACTOR} \
