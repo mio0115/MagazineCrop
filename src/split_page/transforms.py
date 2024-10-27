@@ -103,14 +103,14 @@ class RandomResizedCrop(object):
 
         tgt_x, tgt_y = int(tgt[..., 0]), int(height / 2)
         min_x_low = max(tgt_x - int(0.2 * new_width), 0)
-        min_x_high = min(int(0.9 * tgt_x), width - new_width)
+        min_x_high = min(int(0.9 * tgt_x), width - new_width + 1)
         if min_x_low >= min_x_high:
-            min_x_low, min_x_high = 0, width - new_width
+            min_x_low, min_x_high = 0, width - new_width + 1
 
         min_y_low = max(tgt_y - int(0.2 * new_height), 0)
-        min_y_high = min(int(0.9 * tgt_y), height - new_height)
+        min_y_high = min(int(0.9 * tgt_y), height - new_height + 1)
         if min_y_low >= min_y_high:
-            min_y_low, min_y_high = 0, height - new_height
+            min_y_low, min_y_high = 0, height - new_height + 1
 
         min_x = np.random.randint(min_x_low, min_x_high)
         min_y = np.random.randint(min_y_low, min_y_high)
@@ -134,6 +134,8 @@ class ArrayToTensor(object):
         img = torch.from_numpy(img) / 255.0
         tgt = torch.from_numpy(tgt)
         tgt[..., 0] /= img.shape[1]
+
+        img = img.permute(2, 0, 1).float().contiguous()
 
         return img, tgt
 
