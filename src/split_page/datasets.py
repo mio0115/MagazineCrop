@@ -4,10 +4,8 @@ from PIL import Image
 
 import cv2
 from torch.utils.data import Dataset
-from torchvision import datasets as tv_datasets
 
 from .transforms import build_scanned_transforms
-from ..utils.misc import line_to_coord
 
 
 class MagazineCropDataset(Dataset):
@@ -22,7 +20,7 @@ class MagazineCropDataset(Dataset):
             os.getcwd(), "data", f"{split}_data", "scanned"
         )
         with open(
-            os.path.join(self._path_to_root, "page_split_annotations.json"), "r"
+            os.path.join(self._path_to_root, "split_annotations.json"), "r"
         ) as fp_annotations:
             self._annotations = json.load(fp_annotations)
 
@@ -41,26 +39,32 @@ class MagazineCropDataset(Dataset):
         annotation = self._annotations[key]
         image = cv2.imread(
             os.path.join(self._path_to_root, annotation["imagePath"]),
-            cv2.IMREAD_GRAYSCALE,
         )
-        coord = line_to_coord(
-            polygon=annotation["shapes"][0]["points"],
-            height=annotation["imageHeight"],
-            width=annotation["imageWidth"],
-        )
-
-        image = cv2.equalizeHist(image)[..., None]
+        # note that coordinates are in the form of (x, theta)
+        # note that there could be more than 1
+        coords = annotation["coordinates"][0]
 
         if self._transforms is not None:
-            image, coord = self._transforms(image, coord)
+            image, coords = self._transforms(image, coords)
 
-        return image, coord
+        return image, coords
 
 
 if __name__ == "__main__":
-    ds = MagazineCropDataset(split="train", transforms=build_scanned_transforms())
+    from torch.utils.data import DataLoader
+    from time import time
 
-    img, mask = ds[1]
+    ds = MagazineCropDataset(
+        split="train", transforms=build_scanned_transforms(), augment_factor=1
+    )
 
-    print(img.shape, mask.shape)
-    print(mask.unique())
+    # img, mask = ds[0]
+
+    # print(img.shape, mask.shape)
+    # print(mask.unique())
+
+    start = time()
+    for img, coords in DataLoader(ds, batch_size=4, num_workers=4):
+        print(coords)
+    end = time()
+    print(f"Time taken: {end - start:.2f}s")
