@@ -16,6 +16,7 @@ DEVICE="cuda"
 SAVE_AS="sp_pg_model.pth"
 CLS_NUM=20
 RESUME_FROM="sp_pg_model.pth"
+SHARED_MEM_SIZE="200g"
 TRAIN=""
 RESUME=""
 
@@ -33,6 +34,7 @@ while [[ "$#" -gt 0 ]]; do
         --device) DEVICE="$2"; shift;;
         --save_as) SAVE_AS="$2"; shift;;
         --resume_from) RESUME_FROM="$2"; shift;;
+        --shm) SHARED_MEM_SIZE="$2"; shift;;
         --train) TRAIN="--train" ;;
         --resume) RESUME="--resume" ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
@@ -56,6 +58,7 @@ docker run --rm -it \
         -v $(pwd)/data:${WORKDIR}/data \
         -v $(pwd)/src/split_page/checkpoints:${WORKDIR}/checkpoints \
         --gpus all \
+        --shm-size=${SHARED_MEM_SIZE} \
         ${IMAGE_NAME}:${IMAGE_TAG} \
         python -m src.split_page.train \
             --learning_rate=${LEARNING_RATE} \
