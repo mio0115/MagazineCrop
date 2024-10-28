@@ -134,6 +134,7 @@ class ArrayToTensor(object):
         img = torch.from_numpy(img) / 255.0
         tgt = torch.from_numpy(tgt)
         tgt[..., 0] /= img.shape[1]
+        tgt[..., 1] /= math.pi
 
         img = img.permute(2, 0, 1).float().contiguous()
 
