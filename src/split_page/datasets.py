@@ -58,13 +58,16 @@ if __name__ == "__main__":
         split="train", transforms=build_scanned_transforms(), augment_factor=1
     )
 
-    # img, mask = ds[0]
-
-    # print(img.shape, mask.shape)
-    # print(mask.unique())
+    x_coords = []
 
     start = time()
-    for img, coords in DataLoader(ds, batch_size=4, num_workers=4):
-        print(coords)
+    for img, coords in DataLoader(ds, batch_size=1, num_workers=4):
+        x_coords.append(coords[..., 0])
     end = time()
     print(f"Time taken: {end - start:.2f}s")
+
+    mean_x = sum(x_coords) / len(x_coords)
+    var_x = sum((x - mean_x) ** 2 for x in x_coords) / (len(x_coords) - 1)
+
+    print(f"Mean x-coord: {mean_x}")
+    print(f"Variance x-coord: {var_x}")
