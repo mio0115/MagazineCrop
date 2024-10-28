@@ -43,6 +43,26 @@ class ColorJitter(object):
         return img, tgt
 
 
+class Rotate(object):
+    def __init__(self, random_angle_range=(-20, 20)):
+        self._random_angle_range = random_angle_range
+
+    def __call__(self, img, tgt) -> tuple[np.ndarray, np.ndarray]:
+        # angle in degrees
+        angle = np.random.randint(*self._random_angle_range)
+        height, width = img.shape[:2]
+        center = (width // 2, height // 2)
+        # rotate the image with (intersection_x, height//2) as the center
+        rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
+
+        rotated_img = cv2.warpAffine(img, rot_mat, (width, height))[..., None]
+        rotated_tgt = cv2.warpAffine(
+            tgt, rot_mat, (width, height), flags=cv2.INTER_NEAREST
+        )
+
+        return rotated_img, rotated_tgt
+
+
 class RandomHorizontalFlip(object):
     def __init__(self, probability=0.5):
         self._prob = probability
@@ -84,8 +104,10 @@ class RandomResizedCrop(object):
         height, width, _ = img.shape
         scale = np.random.uniform(self._scale[0], self._scale[1])
         ratio = np.random.uniform(self._ratio[0], self._ratio[1])
-        new_height = min(int(height * scale * math.sqrt(ratio)), height)
-        new_width = min(int(width * scale / math.sqrt(ratio)), width)
+
+        new_area = height * width * scale
+        new_height = min(int(round(math.sqrt(new_area * ratio))), height)
+        new_width = min(int(round(math.sqrt(new_area / ratio))), width)
 
         min_x = np.random.randint(0, width - new_width + 1)
         min_y = np.random.randint(0, height - new_height + 1)
@@ -193,6 +215,7 @@ def build_valid_transform(args):
 def build_scanned_transforms():
     tr_fn = v2.Compose(
         [
+            Rotate(),
             RandomHorizontalFlip(),
             RandomResizedCrop(size=(512, 512), scale=(0.25, 1.0)),
             ArrayToTensor(),
