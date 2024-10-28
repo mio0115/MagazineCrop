@@ -15,6 +15,7 @@ RESUME_FROM="model_weights.pth"
 DEVICE="cuda"
 SAVE_AS="rm_bg_unetpp.pth"
 CLS_NUM=20
+SHARED_MEM_SIZE="200g"
 RESUME_FROM="rm_bg_unetpp_pretrained.pth"
 TRAIN=""
 RESUME=""
@@ -29,6 +30,7 @@ while [[ "$#" -gt 0 ]]; do
         -e) EPOCHS="$2"; shift ;;
         --batch_size) BATCH_SIZE="$2"; shift ;;
         -bs) BATCH_SIZE="$2"; shift;;
+        --shm) SHARED_MEM_SIZE="$2"; shift;;
         --resume) RESUME="--resume" ;;
         --device) DEVICE="$2"; shift;;
         --save_as) SAVE_AS="$2"; shift;;
@@ -56,6 +58,7 @@ docker run --rm -it \
         -v $(pwd)/data:${WORKDIR}/data \
         -v $(pwd)/src/remove_background/checkpoints:${WORKDIR}/checkpoints \
         --gpus all \
+        --shm-size=${SHARED_MEM_SIZE} \
         ${IMAGE_NAME}:${IMAGE_TAG} \
         python -m src.remove_background.train \
             --learning_rate=${LEARNING_RATE} \
