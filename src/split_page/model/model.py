@@ -9,18 +9,18 @@ class SimpleLineEstimator(nn.Module):
 
         self._backbone = backbone
         self._x_reg_head = nn.Sequential(
-            nn.Linear(2048, 1024),
-            nn.ReLU(),
             nn.Linear(1024, 512),
             nn.ReLU(),
-            nn.Linear(512, 1),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
         )
         self._theta_reg_head = nn.Sequential(
-            nn.Linear(2048, 1024),
-            nn.ReLU(),
             nn.Linear(1024, 512),
             nn.ReLU(),
-            nn.Linear(512, 1),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
         )
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
@@ -37,6 +37,7 @@ class Backbone(nn.Module):
         super(Backbone, self).__init__(*args, **kwargs)
 
         self._backbone = tv.models.resnet50(weights=tv.models.ResNet50_Weights.DEFAULT)
+        self._backbone.layer4 = nn.Identity()
         self._backbone.fc = nn.Identity()
 
     def forward(self, src):
