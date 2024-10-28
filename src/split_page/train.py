@@ -25,7 +25,7 @@ def train(
     valid: bool = True,
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[15, 20, 25])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[15, 25, 30])
     model = model.to(args.device)
     path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
 
@@ -87,7 +87,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(
         [
             {"params": model._backbone.parameters(), "lr": args.lr_backbone},
-            {"params": model._fc.parameters()},
+            {"params": model._x_reg_head.parameters()},
+            {"params": model._theta_reg_head.parameters()},
         ],
         lr=args.learning_rate,
     )

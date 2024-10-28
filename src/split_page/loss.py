@@ -9,7 +9,6 @@ class MeanSquaredLoss(nn.Module):
         super().__init__(*args, **kwargs)
 
     def forward(self, logits, targets):
-        logits[..., 0] = logits[..., 0].sigmoid()
-        logits[..., 1] = logits[..., 1].sigmoid() * math.pi
+        logits = logits.sigmoid()
 
-        return F.mse_loss(logits, targets, reduction="sum").mean()
+        return F.mse_loss(logits, targets, reduction="none").sum(-1).mean()
