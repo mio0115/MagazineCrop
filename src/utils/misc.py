@@ -20,25 +20,29 @@ def polygon_to_mask(polygon, height: int, width: int):
 
 def lines_to_coord(lines, height: int, width: int):
     intersections = []
+    epsilon = 1e-6
+
     for line in lines:
         (x1, y1), (x2, y2) = line["points"]
-        if x1 == x2:
+
+        # handle vertical line case
+        if abs(x1 - x2) < epsilon:
             intersections.append((x1, np.pi / 2))
             continue
-        if y1 > y2:
-            y1, y2 = y2, y1
-            x1, x2 = x2, x1
 
-        slope, bias = (y1 - y2) / (x1 - x2), y1 - (y1 - y2) / (x1 - x2) * x1
+        # compute slope and bias
+        slope = (y1 - y2) / (x1 - x2)
+        bias = y1 - slope * x1
 
-        if slope > 0:
-            intersections.append((1 / slope * (height / 2 - bias), np.arctan(slope)))
-        else:
-            intersections.append(
-                (
-                    1 / slope * (height / 2 - bias),
-                    np.pi - np.arctan(np.abs(slope)),
-                )
-            )
+        # compute intersection x at y = height / 2
+        x_intersect = 1 / slope * (height / 2 - bias)
+        x_intersect = min(max(x_intersect, 0), width)
+
+        angle = np.arctan2(y2 - y1, x2 - x1)
+        if angle < 0:
+            # ensure that angle is in [0, np.pi]
+            angle += np.pi
+
+        intersections.append((x_intersect, angle))
 
     return intersections
