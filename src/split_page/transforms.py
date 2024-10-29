@@ -6,6 +6,8 @@ import torchvision.transforms as T
 import numpy as np
 import cv2
 
+from ..utils.misc import resize_with_aspect_ratio
+
 
 class ImageToArray(object):
     def __init__(self, normalize=True):
@@ -32,25 +34,25 @@ class Rotate(object):
         height, width = img.shape[:2]
         center = (int(tgt[..., 0]), height // 2)
         # rotate the image with (intersection_x, height//2) as the center
-        rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
+        rot_mat = cv2.getRotationMatrix2D(center, angle * -1, 1.0)
 
         rotated_img = cv2.warpAffine(img, rot_mat, (width, height))
 
         arc_angle = np.deg2rad(angle)
         rotated_tgt = tgt.copy()
-        rotated_tgt[..., 1] = tgt[..., 1] - arc_angle
+        rotated_tgt[..., 1] = (rotated_tgt[..., 1] + arc_angle) % (2 * np.pi)
 
         return rotated_img, rotated_tgt
 
 
 class RandomHorizontalFlip(object):
-    def __init__(self, probability=0.5):
-        self._prob = probability
+    def __init__(self, not_flip_prob=0.5):
+        self._not_flip_prob = not_flip_prob
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        if np.random.rand() < self._prob:
+        if np.random.rand() >= self._not_flip_prob:
             img = np.flip(img, axis=1)
 
             tgt[..., 0] = img.shape[1] - tgt[..., 0]
@@ -94,14 +96,13 @@ class RandomResizedCrop(object):
     ) -> tuple[np.ndarray, np.ndarray]:
         height, width, _ = img.shape
 
+        resized_img, resized_tgt = resize_with_aspect_ratio(
+            img, tgt, target_size=self._size
+        )
         if np.random.rand() < self._not_crop_prob:
             # do not crop
-            img = cv2.resize(img, self._size, interpolation=cv2.INTER_LINEAR)
-            tgt[..., 0] *= self._size[1] / width
+            return resized_img, resized_tgt
 
-            return img, tgt
-
-        crop_found = False
         for _ in range(self._attempt_limit):
             scale = np.random.uniform(self._scale[0], self._scale[1])
             ratio = np.random.uniform(self._ratio[0], self._ratio[1])
@@ -140,20 +141,16 @@ class RandomResizedCrop(object):
             if new_x < 0 or new_x >= new_width:
                 continue
 
-            crop_found = True
             new_img = img[min_y : min_y + new_height, min_x : min_x + new_width, :]
-
-            resized_img = cv2.resize(
-                new_img, self._size, interpolation=cv2.INTER_LINEAR
-            )
             resized_tgt = tgt.copy()
-            resized_tgt[..., 0] = new_x * self._size[1] / new_width
+            resized_tgt[..., 0] = new_x
+
+            resized_img, resized_tgt = resize_with_aspect_ratio(
+                new_img, resized_tgt, target_size=self._size
+            )
+
             break
 
-        if not crop_found:
-            resized_img = cv2.resize(img, self._size, interpolation=cv2.INTER_LINEAR)
-            resized_tgt = tgt.copy()
-            resized_tgt[..., 0] *= self._size[1] / width
         if img.ndim > resized_img.ndim:
             resized_img = resized_img[..., None]
 
@@ -177,10 +174,9 @@ class ArrayToTensor(object):
 def build_scanned_transforms():
     tr_fn = v2.Compose(
         [
-            ImageToArray(normalize=False),
             Rotate(),
             RandomHorizontalFlip(),
-            RandomResizedCrop(size=(512, 512), scale=(0.05, 0.6)),
+            RandomResizedCrop(size=(640, 640), scale=(0.05, 0.6)),
             ArrayToTensor(),
         ]
     )

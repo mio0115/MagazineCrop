@@ -46,3 +46,39 @@ def lines_to_coord(lines, height: int, width: int):
         intersections.append((x_intersect, angle))
 
     return intersections
+
+
+def resize_with_aspect_ratio(img, tgt, target_size=(512, 512)):
+    """
+    This function is to resize images with given aspect ratio
+    instead of directly resizing to target_size which cause distorted.
+    """
+    height, width = img.shape[:2]
+    target_height, target_width = target_size
+
+    aspect_ratio = width / height
+    if height > width:
+        new_height = target_height
+        new_width = int(new_height * aspect_ratio)
+    else:
+        new_width = target_width
+        new_height = int(new_width / aspect_ratio)
+
+    # resize the image and adjust target
+    resized_img = cv2.resize(img, (new_width, new_height), cv2.INTER_LINEAR)
+    resized_tgt = tgt.copy()
+    resized_tgt[..., 0] *= new_width / width
+
+    # compute padding to reach target size
+    pad_height = target_height - new_height
+    pad_width = target_width - new_width
+    top, bottom = pad_height // 2, pad_height - (pad_height // 2)
+    left, right = pad_width // 2, pad_width - (pad_width // 2)
+
+    # pad the image and adjust target
+    padded_img = cv2.copyMakeBorder(
+        resized_img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0
+    )
+    resized_tgt[..., 0] += left
+
+    return padded_img, resized_tgt
