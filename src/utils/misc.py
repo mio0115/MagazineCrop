@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import numpy as np
 import cv2
@@ -48,7 +50,11 @@ def lines_to_coord(lines, height: int, width: int):
     return intersections
 
 
-def resize_with_aspect_ratio(img, tgt, target_size=(512, 512)):
+def resize_with_aspect_ratio(
+    img: np.ndarray,
+    tgt: Optional[np.ndarray] = None,
+    target_size: tuple[int] = (512, 512),
+) -> tuple[np.ndarray, Optional[np.ndarray]]:
     """
     This function is to resize images with given aspect ratio
     instead of directly resizing to target_size which cause distorted.
@@ -64,10 +70,8 @@ def resize_with_aspect_ratio(img, tgt, target_size=(512, 512)):
         new_width = target_width
         new_height = int(new_width / aspect_ratio)
 
-    # resize the image and adjust target
+    # resize the image
     resized_img = cv2.resize(img, (new_width, new_height), cv2.INTER_LINEAR)
-    resized_tgt = tgt.copy()
-    resized_tgt[..., 0] *= new_width / width
 
     # compute padding to reach target size
     pad_height = target_height - new_height
@@ -79,6 +83,10 @@ def resize_with_aspect_ratio(img, tgt, target_size=(512, 512)):
     padded_img = cv2.copyMakeBorder(
         resized_img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0
     )
-    resized_tgt[..., 0] += left
+
+    resized_tgt = None
+    if tgt is not None:
+        resized_tgt = tgt.copy()
+        resized_tgt[..., 0] = resized_tgt[..., 0] * new_width / width + left
 
     return padded_img, resized_tgt

@@ -8,6 +8,7 @@ import numpy as np
 
 from .model.model import build_model
 from ..utils.arg_parser import get_parser
+from ..utils.misc import resize_with_aspect_ratio
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
@@ -17,7 +18,7 @@ if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
 
-    new_width, new_height = 512, 512
+    new_width, new_height = 640, 640
 
     cv2.namedWindow("splitted image", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("splitted image", width=new_width, height=new_height)
@@ -39,7 +40,9 @@ if __name__ == "__main__":
 
     # image = cv2.imread(os.path.join(path_to_images, args.image_name))
 
-    resized_image = cv2.resize(image, (new_width, new_height))
+    resized_image, _ = resize_with_aspect_ratio(
+        image, target_size=(new_width, new_height)
+    )
 
     model = build_model()
     model.load_state_dict(
