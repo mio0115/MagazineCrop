@@ -43,7 +43,7 @@ class MagazineCropDataset(Dataset):
         )
         # note that coordinates are in the form of (x, theta)
         # note that there could be more than 1
-        coords = np.array(annotation["coordinates"][0])
+        coords = np.array(annotation["coordinates"][0], dtype=np.float32)
 
         if self._transforms is not None:
             image, coords = self._transforms(image, coords)
