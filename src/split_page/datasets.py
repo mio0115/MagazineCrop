@@ -4,6 +4,7 @@ from PIL import Image
 
 import cv2
 from torch.utils.data import Dataset
+import numpy as np
 
 from .transforms import build_scanned_transforms
 
@@ -42,7 +43,7 @@ class MagazineCropDataset(Dataset):
         )
         # note that coordinates are in the form of (x, theta)
         # note that there could be more than 1
-        coords = annotation["coordinates"][0]
+        coords = np.array(annotation["coordinates"][0])
 
         if self._transforms is not None:
             image, coords = self._transforms(image, coords)
