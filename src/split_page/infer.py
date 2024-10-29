@@ -27,11 +27,11 @@ if __name__ == "__main__":
     path_to_image = os.path.join(
         os.getcwd(),
         "data",
-        "train_data",
+        "valid_data",
         "scanned",
         "images",
-        "B6960",
-        "no7-1008_135655.tif",
+        "C2797",
+        "no6-1011_092043.tif",
     )
     image = cv2.imread(os.path.join(path_to_image))
 
@@ -58,15 +58,15 @@ if __name__ == "__main__":
         logits = model(in_image)
         line_coords = logits.sigmoid().cpu().numpy()
 
-        line_x_coord = int(line_coords[..., 0] * width)
-        line_theta = line_coords[..., 1] * math.pi
+        line_x_coord = int(line_coords[..., 0].item() * width)
+        line_theta = line_coords[..., 1] * np.pi
 
         point_0 = (line_x_coord, height // 2)
 
-        line_slope = np.tan(line_theta)
+        line_slope = np.tan(line_theta).item()
 
-        point_1 = (line_x_coord - 10, int(height // 2 - line_slope * 10))
-        point_2 = (line_x_coord + 10, int(height // 2 + line_slope * 10))
+        point_1 = (line_x_coord - 1000, int(height // 2 - line_slope * 1000))
+        point_2 = (line_x_coord + 1000, int(height // 2 + line_slope * 1000))
 
         cv2.line(image, pt1=point_1, pt2=point_2, color=(0, 0, 255), thickness=3)
 
