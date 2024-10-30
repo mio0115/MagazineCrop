@@ -84,11 +84,17 @@ if __name__ == "__main__":
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
     model = build_model()
+    backbone_params = set(model._backbone._resnet_blks.parameters()).union(
+        set(model._backbone._resnet_prev_layer.parameters())
+    )
+    other_params = set(model.parameters()) - backbone_params
     optimizer = torch.optim.AdamW(
         [
-            {"params": model._backbone.parameters(), "lr": args.lr_backbone},
-            {"params": model._x_reg_head.parameters()},
-            {"params": model._theta_reg_head.parameters()},
+            {
+                "params": list(backbone_params),
+                "lr": args.lr_backbone,
+            },
+            {"params": list(other_params)},
         ],
         lr=args.learning_rate,
     )
@@ -107,10 +113,12 @@ if __name__ == "__main__":
         )
 
     train_dataset = MagazineCropDataset(
-        split="train", transforms=build_scanned_transforms()
+        split="train",
+        transforms=build_scanned_transforms(),
+        augment_factor=args.augment_factor,
     )
     valid_dataset = MagazineCropDataset(
-        split="valid", transforms=build_scanned_transforms_valid()
+        split="valid", transforms=build_scanned_transforms_valid(), augment_factor=1
     )
     dataloader = {
         "train": DataLoader(
