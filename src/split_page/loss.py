@@ -11,6 +11,7 @@ class MeanSquaredLoss(nn.Module):
 
     def forward(self, logits, targets):
         logits = logits.sigmoid()
-        loss = F.mse_loss(logits, targets, reduction="none") * self._weights
+        weights = self._weights.to(logits.device)
+        loss = F.mse_loss(logits, targets, reduction="none") * weights
 
         return loss.sum(-1).mean()
