@@ -3,6 +3,7 @@ from torch import nn
 import torchvision as tv
 
 from ...model_templates import templates
+from ...model_templates.blocks.blocks import BalanceConvBlock
 
 
 class SimpleLineEstimator(nn.Module):
@@ -10,35 +11,62 @@ class SimpleLineEstimator(nn.Module):
         super(SimpleLineEstimator, self).__init__(*args, **kwargs)
 
         self._backbone = backbone
-        self._avg_pool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
+        self._contract_small = nn.Sequential(
+            BalanceConvBlock(256, 256),
+            nn.MaxPool2d(2, 2),
+            BalanceConvBlock(256, 256, activation_func=nn.LeakyReLU()),
+            nn.AdaptiveAvgPool2d((1, 1)),
+        )
+        self._contract_medium = nn.Sequential(
+            BalanceConvBlock(256, 256),
+            nn.MaxPool2d(2, 2),
+            BalanceConvBlock(256, 256),
+            nn.MaxPool2d(2, 2),
+            BalanceConvBlock(256, 256, activation_func=nn.LeakyReLU()),
+            nn.AdaptiveAvgPool2d((1, 1)),
+        )
+        self._contract_large = nn.Sequential(
+            BalanceConvBlock(256, 256),
+            nn.MaxPool2d(2, 2),
+            BalanceConvBlock(256, 256),
+            nn.MaxPool2d(2, 2),
+            BalanceConvBlock(256, 256),
+            nn.MaxPool2d(2, 2),
+            BalanceConvBlock(256, 256, activation_func=nn.LeakyReLU()),
+            nn.AdaptiveAvgPool2d((1, 1)),
+        )
+
+        self._weights = nn.Parameter(torch.ones((256, 3), dtype=torch.float32))
         self._x_reg_head = nn.Sequential(
-            nn.Linear(32, 1024),
+            nn.Linear(256, 128),
             nn.LeakyReLU(),
-            nn.Linear(1024, 512),
+            nn.Linear(128, 64),
             nn.LeakyReLU(),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(64, 1),
         )
         self._theta_reg_head = nn.Sequential(
-            nn.Linear(32, 512),
+            nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(128, 1),
         )
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
-        # origin shape of src: (batch_size, channel, height, width)
-        # permute the input tensor to (batch, height, width, channel)
-        src = src.permute(0, 2, 3, 1)
-        features = self._backbone(src)
+        features_list = self._backbone(src)
 
-        # reduce the spatial dimension of the feature map from (batch, channel, height, width) to (batch, channel)
-        reduced_features = self._avg_pool(features).squeeze()
+        small_features = self._contract_small(features_list[0]).flatten(1)
+        medium_features = self._contract_medium(features_list[1]).flatten(1)
+        large_features = self._contract_large(features_list[2]).flatten(1)
 
-        x_logits = self._x_reg_head(reduced_features)
-        theta_logits = self._theta_reg_head(reduced_features)
+        features = torch.stack(
+            [small_features, medium_features, large_features], dim=-1
+        )
+
+        combined_features = torch.sum(
+            features * self._weights[None, ...].softmax(dim=-1), dim=-1
+        )
+
+        x_logits = self._x_reg_head(combined_features)
+        theta_logits = self._theta_reg_head(combined_features)
 
         return torch.cat([x_logits, theta_logits], dim=-1)
 
@@ -56,7 +84,7 @@ class Backbone(nn.Module):
 
 
 def build_model():
-    backbone = templates.build_unetpp(in_channels=3, embed_dims=[32, 64, 128, 256, 512])
+    backbone = templates.build_fpn()
     model = SimpleLineEstimator(backbone)
 
     return model
@@ -65,6 +93,6 @@ def build_model():
 if __name__ == "__main__":
     model = build_model()
 
-    output = model(torch.rand(size=(1, 3, 224, 224)))
+    output = model(torch.rand(size=(2, 3, 640, 640)))
 
     print(output.shape)
