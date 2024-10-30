@@ -230,7 +230,7 @@ class BalanceConvBlock(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
         )
-        self._weight = nn.Parameter(torch.tensor(0, dtype=torch.float32))
+        self._weight = nn.Parameter(torch.tensor(0.0, dtype=torch.float32))
 
         self._activation_func = activation_func
 
