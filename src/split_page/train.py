@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 from .model.model import build_model
 from .datasets import MagazineCropDataset
-from .transforms import build_scanned_transforms
+from .transforms import build_scanned_transforms, build_scanned_transforms_valid
 
 from ..utils.arg_parser import get_parser
 from .loss import MeanSquaredLoss
@@ -110,20 +110,20 @@ if __name__ == "__main__":
         split="train", transforms=build_scanned_transforms()
     )
     valid_dataset = MagazineCropDataset(
-        split="valid", transforms=build_scanned_transforms()
+        split="valid", transforms=build_scanned_transforms_valid()
     )
     dataloader = {
         "train": DataLoader(
             train_dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            num_workers=max(os.cpu_count() - 1, 0),
+            num_workers=5,
         ),
         "valid": DataLoader(
             valid_dataset,
             batch_size=args.batch_size,
             shuffle=False,
-            num_workers=max(os.cpu_count() - 1, 0),
+            num_workers=5,
         ),
     }
 

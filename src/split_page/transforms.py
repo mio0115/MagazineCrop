@@ -24,6 +24,16 @@ class ImageToArray(object):
         return img_tensor, tgt_tensor
 
 
+class Resize(object):
+    def __init__(self, size: tuple[int]):
+        self._size = size
+
+    def __call__(self, img, tgt) -> tuple[np.ndarray, np.ndarray]:
+        img, tgt = resize_with_aspect_ratio(img, tgt, target_size=self._size)
+
+        return img, tgt
+
+
 class Rotate(object):
     def __init__(self, random_angle_range=(-20, 20)):
         self._random_angle_range = random_angle_range
@@ -95,6 +105,8 @@ class RandomResizedCrop(object):
         self, img: np.ndarray, tgt: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         height, width, _ = img.shape
+        area = height * width
+        tgt_x, tgt_y = int(tgt[..., 0]), height // 2
 
         resized_img, resized_tgt = resize_with_aspect_ratio(
             img, tgt, target_size=self._size
@@ -107,7 +119,6 @@ class RandomResizedCrop(object):
             scale = np.random.uniform(self._scale[0], self._scale[1])
             ratio = np.random.uniform(self._ratio[0], self._ratio[1])
 
-            area = height * width
             new_area = area * scale
 
             new_height = int(round(math.sqrt(new_area * ratio)))
@@ -115,7 +126,6 @@ class RandomResizedCrop(object):
             if new_height > height or new_width > width:
                 continue
 
-            tgt_x, tgt_y = int(tgt[..., 0]), int(height / 2)
             min_x_low = max(tgt_x - int(0.9 * new_width), 0)
             min_x_high = min(int(0.9 * tgt_x), width - new_width + 1)
             if min_x_low >= min_x_high:
@@ -180,5 +190,11 @@ def build_scanned_transforms():
             ArrayToTensor(),
         ]
     )
+
+    return tr_fn
+
+
+def build_scanned_transforms_valid():
+    tr_fn = v2.Compose([Resize(size=(640, 640)), ArrayToTensor()])
 
     return tr_fn
