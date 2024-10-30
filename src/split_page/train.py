@@ -92,7 +92,7 @@ if __name__ == "__main__":
         ],
         lr=args.learning_rate,
     )
-    loss_fn = MeanSquaredLoss()
+    loss_fn = MeanSquaredLoss().to(args.device)
 
     if args.resume:
         model.load_state_dict(
