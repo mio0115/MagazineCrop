@@ -177,3 +177,71 @@ class DoubleConvBlock(nn.Module):
             src = conv_block(src)
 
         return src
+
+
+class SqueezeExcitationBlock(nn.Module):
+    def __init__(self, in_channels: int, reduction_ratio: int = 16):
+        super(SqueezeExcitationBlock, self).__init__()
+
+        self._pool = nn.AdaptiveAvgPool2d(1)
+        self._fc = nn.Sequential(
+            nn.Linear(in_channels, in_channels // reduction_ratio),
+            nn.ReLU(),
+            nn.Linear(in_channels // reduction_ratio, in_channels),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, src: torch.Tensor) -> torch.Tensor:
+        # squeeze
+        x = self._pool(src)
+        x = x.view(x.size(0), -1)
+
+        # excitation
+        x = self._fc(x)
+        x = x.view(x.size(0), x.size(1), 1, 1)
+
+        return src * x
+
+
+class BalanceConvBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        activation_func: Optional[callable] = None,
+        *args,
+        **kwargs,
+    ):
+        super(BalanceConvBlock, self).__init__(*args, **kwargs)
+
+        self._norm_conv_blk = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+        )
+        self._vert_conv_blk = nn.Sequential(
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=(3, 1),
+                padding=(1, 0),
+                bias=False,
+            ),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+        )
+        self._weight = nn.Parameter(torch.tensor(0, dtype=torch.float32))
+
+        self._activation_func = activation_func
+
+    def forward(self, src: torch.Tensor) -> torch.Tensor:
+        norm_conv = self._norm_conv_blk(src)
+        vert_conv = self._vert_conv_blk(src)
+
+        norm_weight = self._weight.sigmoid()
+        x = norm_weight * norm_conv + (1 - norm_weight) * vert_conv
+
+        if self._activation_func is not None:
+            x = self._activation_func(x)
+
+        return x
