@@ -1,186 +1,43 @@
-from typing import Optional
-
 from torch import nn
 import torch
-from torchvision import models as tv_models
 
-from .blocks import DoubleConvBlock, ConvBlock, ContractBlock
+from ...model_templates.templates import build_unetpp
 
 
-class UNetPlusPlus(nn.Module):
-    def __init__(
-        self,
-        contract_block: nn.Module,
-        embed_dims: list[int],
-        number_of_classes: int,
-        *args,
-        **kwargs
-    ):
-        # embed_dims: [32, 64, 128, 256, 512]
-        super(UNetPlusPlus, self).__init__(*args, **kwargs)
+class Model(nn.Module):
+    def __init__(self, backbone, number_of_classes: int, *args, **kwargs):
+        super(Model, self).__init__(*args, **kwargs)
 
-        self._contract_blk = contract_block
-
-        self._expand_blks = nn.ModuleList()
-        for ind, (curr_lvl_ch, next_lvl_ch) in enumerate(
-            zip(embed_dims[:-1], embed_dims[1:])
-        ):
-            self._expand_blks.append(
-                nn.ModuleList(
-                    [
-                        DoubleConvBlock(
-                            in_channels=curr_lvl_ch * ind + next_lvl_ch,
-                            inter_channels=curr_lvl_ch,
-                            out_channels=curr_lvl_ch,
-                            bias=False,
-                            activation_fn=[nn.ReLU(), None],
-                        )
-                        for ind in range(1, len(embed_dims) - ind)
-                    ]
-                )
-            )
+        self._backbone = backbone
 
         # add one more class for dummy class (background) if the number of classes is greater than 1
         all_classes: int = number_of_classes + (1 if number_of_classes > 1 else 0)
         self._to_logits = nn.Conv2d(
-            in_channels=embed_dims[0],
+            in_channels=self._backbone.out_channels,
             out_channels=all_classes,
             kernel_size=1,
             bias=False,
         )
-        self._weights = nn.Parameter(torch.ones(4, dtype=torch.float32))
-
-        self._upsample = nn.Upsample(
-            scale_factor=2, mode="bilinear", align_corners=True
-        )
 
     def forward(self, src):
-        # permute the input tensor to (batch, channel, height, width)
-        src = src.permute(0, 3, 1, 2)
+        features = self._backbone(src)
 
-        # execute contractive block
-        src_list: list[torch.Tensor] = self._contract_blk(src)
-        src_list: list[list[torch.Tensor]] = [[src] for src in src_list]
-
-        # execute expansive block
-        for pyramid_level in range(1, len(src_list)):
-            for ind in range(len(src_list) - pyramid_level):
-                src_list[ind].append(
-                    self._expand_blks[ind][pyramid_level - 1](
-                        # concatenate the output of the previous block and the upsampled feature map
-                        torch.cat(
-                            src_list[ind] + [self._upsample(src_list[ind + 1][-1])],
-                            dim=1,
-                        )
-                    )
-                )
-
-        feature_maps = torch.stack(src_list[0][1:], dim=1)
-        weighted_features = torch.sum(
-            self._weights.softmax(-1).view(1, -1, 1, 1, 1) * feature_maps, dim=1
-        )
-
-        logits = self._to_logits(weighted_features)
+        logits = self._to_logits(features)
         return logits.permute(0, 2, 3, 1).contiguous()
 
 
-class ModifiedUNetPlusPlus(nn.Module):
-    def __init__(
-        self,
-        contract_block,
-        embed_dims: list[int],
-        number_of_classes: int,
-        *args,
-        **kwargs
-    ):
-        # embed_dims: [32, 64, 128, 256, 512]
-        super(UNetPlusPlus, self).__init__(*args, **kwargs)
-
-        self._contract_blk = contract_block
-        self._cls_num = number_of_classes
-
-        self._expand_blks = nn.ModuleList()
-        for ind, (curr_lvl_ch, next_lvl_ch) in enumerate(
-            zip(embed_dims[:-1], embed_dims[1:])
-        ):
-            self._expand_blks.append(
-                nn.ModuleList(
-                    [
-                        DoubleConvBlock(
-                            in_channels=curr_lvl_ch * ind + next_lvl_ch,
-                            inter_channels=curr_lvl_ch,
-                            out_channels=curr_lvl_ch,
-                            activation_fn=[nn.ReLU(), None],
-                            bias=False,
-                        )
-                        for ind in range(1, len(embed_dims) - ind)
-                    ]
-                )
-            )
-
-        self._to_logits = ConvBlock(
-            in_channels=embed_dims[-5],
-            out_channels=self._cls_num,
-            kernel_size=1,
-            bias=False,
-            padding=0,
-        )
-
-        self._upsample = nn.Upsample(
-            scale_factor=2, mode="bilinear", align_corners=True
-        )
-
-    def forward(self, src):
-        # permute the input tensor to (batch, channel, height, width)
-        src = src.permute(0, 3, 1, 2)
-        # execute contractive block
-        src_list: list[torch.Tensor] = self._contract_blk(src)
-        src_list: list[list[torch.Tensor]] = [[src] for src in src_list]
-
-        # execute expansive block
-        for pyramid_level in range(1, len(src_list)):
-            for ind in range(len(src_list) - pyramid_level):
-                src_list[ind].append(
-                    self._expand_blks[ind][pyramid_level - 1](
-                        # concatenate the output of the previous block and the upsampled feature map
-                        torch.cat(
-                            src_list[ind] + [self._upsample(src_list[ind + 1][-1])],
-                            dim=1,
-                        )
-                    )
-                )
-
-        logits = self._to_logits(torch.stack(src_list[0][1:], dim=1).mean(dim=1))
-        return logits.permute(0, 2, 3, 1)
-
-
-def build_unetplusplus(
+def build_model(
     number_of_classes: int = 20, embed_dims: list[int] = [32, 64, 128, 256, 512]
-) -> UNetPlusPlus:
+) -> Model:
 
-    return UNetPlusPlus(
-        contract_block=ContractBlock(input_dim=1, embed_dims=embed_dims),
-        embed_dims=embed_dims,
-        number_of_classes=number_of_classes,
-    )
+    backbone = build_unetpp(in_channels=1, embed_dims=embed_dims)
+    model = Model(backbone, number_of_classes)
 
-
-def build_modified_unetplusplus(number_of_classes: int = 20) -> ModifiedUNetPlusPlus:
-    embed_dims = [32, 64, 128, 256, 512]
-
-    backbone = tv_models.resnet34(weights=tv_models.ResNet34_Weights.DEFAULT)
-
-    contract_blk = nn.ModuleList()
-
-    return ModifiedUNetPlusPlus(
-        contract_block=ContractBlock(embed_dims=embed_dims),
-        embed_dims=embed_dims,
-        number_of_classes=number_of_classes + 1,
-    )
+    return model
 
 
 if __name__ == "__main__":
-    model = build_unetplusplus()
+    model = build_model()
 
     img = torch.rand(size=(2, 256, 256, 3))
     print(model(img).shape)
