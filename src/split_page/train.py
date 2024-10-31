@@ -25,7 +25,7 @@ def train(
     valid: bool = True,
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[15, 25, 30])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 15, 20])
     model = model.to(args.device)
     path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
 
@@ -48,7 +48,7 @@ def train(
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
-        print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<11}: {avg_loss:.4f}")
+        print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<11}: {avg_loss:.6f}")
 
         if valid:
             model.eval()
@@ -66,14 +66,14 @@ def train(
 
                 avg_vloss = running_vloss / (ind + 1)
 
-                output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.4f}\n"
+                output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.6f}\n"
 
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
                     torch.save(model.state_dict(), path_to_save)
                     output_avg_vloss += "\tNew best loss, Saved!"
                 print(output_avg_vloss)
-                print(f"\t{'Best Loss':<11}: {best_loss:.4f}")
+                print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
 
 
 if __name__ == "__main__":
@@ -125,13 +125,13 @@ if __name__ == "__main__":
             train_dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            num_workers=5,
+            num_workers=10,
         ),
         "valid": DataLoader(
             valid_dataset,
             batch_size=args.batch_size,
             shuffle=False,
-            num_workers=5,
+            num_workers=10,
         ),
     }
 
