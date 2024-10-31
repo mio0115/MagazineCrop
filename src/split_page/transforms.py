@@ -186,7 +186,7 @@ def build_scanned_transforms():
         [
             Rotate(),
             RandomHorizontalFlip(),
-            RandomResizedCrop(size=(640, 640), scale=(0.05, 0.6)),
+            RandomResizedCrop(size=(1024, 1024), scale=(0.05, 0.6)),
             ArrayToTensor(),
         ]
     )
@@ -195,6 +195,6 @@ def build_scanned_transforms():
 
 
 def build_scanned_transforms_valid():
-    tr_fn = v2.Compose([Resize(size=(640, 640)), ArrayToTensor()])
+    tr_fn = v2.Compose([Resize(size=(1024, 1024)), ArrayToTensor()])
 
     return tr_fn
