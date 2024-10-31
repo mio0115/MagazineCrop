@@ -264,6 +264,54 @@ class BalanceConvBlock(nn.Module):
         return x
 
 
+class ResidualBalanceConvBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        activation_func: Optional[callable] = None,
+        *args,
+        **kwargs,
+    ):
+        super(ResidualBalanceConvBlock, self).__init__(*args, **kwargs)
+
+        self._conv_block = BalanceConvBlock(in_channels, out_channels, activation_func)
+        self._residual_conv = (
+            nn.Conv2d(in_channels, out_channels, kernel_size=1)
+            if in_channels != out_channels
+            else nn.Identity()
+        )
+
+    def forward(self, src: torch.Tensor) -> torch.Tensor:
+        return self._conv_block(src) + self._residual_conv(src)
+
+
+class ScaleAttention(nn.Module):
+    def __init__(self, in_channels: int = 256):
+        super(ScaleAttention, self).__init__()
+
+        self._to_weights = nn.Sequential(
+            nn.Linear(in_channels * 3, in_channels),
+            nn.ReLU(),
+            nn.Linear(in_channels, 3),
+        )
+
+    def forward(self, features) -> torch.Tensor:
+        weights = self._to_weights(torch.cat(features, 1).permute(0, 2, 3, 1)).softmax(
+            -1
+        )
+
+        # features[0]: (bs, c, h, w)
+        bs, h, w, _ = weights.shape
+        reduced_features = (
+            features[0] * weights[..., 0].view(bs, 1, h, w)
+            + features[1] * weights[..., 1].view(bs, 1, h, w)
+            + features[2] * weights[..., 2].view(bs, 1, h, w)
+        )
+
+        return reduced_features
+
+
 if __name__ == "__main__":
     # test the blocks
     input_tensor = torch.randn(2, 3, 256, 256)

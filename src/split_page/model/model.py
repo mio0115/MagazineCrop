@@ -3,7 +3,7 @@ from torch import nn
 import torchvision as tv
 
 from ...model_templates import templates
-from ...model_templates.blocks.blocks import BalanceConvBlock
+from ...model_templates.blocks.blocks import ResidualBalanceConvBlock, ScaleAttention
 
 
 class SimpleLineEstimator(nn.Module):
@@ -11,62 +11,47 @@ class SimpleLineEstimator(nn.Module):
         super(SimpleLineEstimator, self).__init__(*args, **kwargs)
 
         self._backbone = backbone
-        self._contract_small = nn.Sequential(
-            BalanceConvBlock(256, 256),
-            nn.MaxPool2d(2, 2),
-            BalanceConvBlock(256, 256, activation_func=nn.LeakyReLU()),
-            nn.AdaptiveAvgPool2d((1, 1)),
-        )
+
+        self._contract_small = ResidualBalanceConvBlock(256, 256)
         self._contract_medium = nn.Sequential(
-            BalanceConvBlock(256, 256),
+            ResidualBalanceConvBlock(256, 256),
             nn.MaxPool2d(2, 2),
-            BalanceConvBlock(256, 256),
-            nn.MaxPool2d(2, 2),
-            BalanceConvBlock(256, 256, activation_func=nn.LeakyReLU()),
-            nn.AdaptiveAvgPool2d((1, 1)),
         )
         self._contract_large = nn.Sequential(
-            BalanceConvBlock(256, 256),
-            nn.MaxPool2d(2, 2),
-            BalanceConvBlock(256, 256),
-            nn.MaxPool2d(2, 2),
-            BalanceConvBlock(256, 256),
-            nn.MaxPool2d(2, 2),
-            BalanceConvBlock(256, 256, activation_func=nn.LeakyReLU()),
-            nn.AdaptiveAvgPool2d((1, 1)),
+            ResidualBalanceConvBlock(256, 256),
+            nn.MaxPool2d(4, 4),
         )
 
-        self._weights = nn.Parameter(torch.ones((256, 3), dtype=torch.float32))
+        self._attention = ScaleAttention()
+        self._avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self._x_reg_head = nn.Sequential(
             nn.Linear(256, 128),
             nn.LeakyReLU(),
+            nn.Dropout(0.3),
             nn.Linear(128, 64),
             nn.LeakyReLU(),
             nn.Linear(64, 1),
         )
         self._theta_reg_head = nn.Sequential(
-            nn.Linear(256, 128),
+            nn.Linear(256, 64),
             nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(64, 1),
         )
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
         features_list = self._backbone(src)
 
-        small_features = self._contract_small(features_list[0]).flatten(1)
-        medium_features = self._contract_medium(features_list[1]).flatten(1)
-        large_features = self._contract_large(features_list[2]).flatten(1)
+        small_features = features_list[2]
+        medium_features = self._contract_medium(features_list[1])
+        large_features = self._contract_large(features_list[0])
 
-        features = torch.stack(
-            [small_features, medium_features, large_features], dim=-1
+        combined_features = self._attention(
+            [small_features, medium_features, large_features]
         )
+        reduced_feature = self._avg_pool(combined_features).flatten(1)
 
-        combined_features = torch.sum(
-            features * self._weights[None, ...].softmax(dim=-1), dim=-1
-        )
-
-        x_logits = self._x_reg_head(combined_features)
-        theta_logits = self._theta_reg_head(combined_features)
+        x_logits = self._x_reg_head(reduced_feature)
+        theta_logits = self._theta_reg_head(reduced_feature)
 
         return torch.cat([x_logits, theta_logits], dim=-1)
 
@@ -93,6 +78,6 @@ def build_model():
 if __name__ == "__main__":
     model = build_model()
 
-    output = model(torch.rand(size=(2, 3, 640, 640)))
+    output = model(torch.rand(size=(2, 3, 1024, 1024)))
 
     print(output.shape)

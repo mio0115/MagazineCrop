@@ -158,7 +158,7 @@ def build_fpn() -> FeaturePyramidNetwork:
 if __name__ == "__main__":
     model = FeaturePyramidNetwork()
 
-    t = torch.rand(2, 640, 640, 3)
+    t = torch.rand(2, 3, 1024, 1024)
     out = model(t)
 
     print(out[0].shape, out[1].shape, out[2].shape)
