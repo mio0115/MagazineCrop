@@ -34,6 +34,7 @@ if __name__ == "__main__":
         "C2797",
         "no6-1011_092043.tif",
     )
+    path_to_models = os.path.join(os.getcwd(), "src", "split_page", "checkpoints")
     image = cv2.imread(os.path.join(path_to_image))
 
     height, width, *_ = image.shape
@@ -46,9 +47,7 @@ if __name__ == "__main__":
 
     model = build_model()
     model.load_state_dict(
-        torch.load(
-            os.path.join(args.path_to_model_dir, args.model_name), weights_only=True
-        )
+        torch.load(os.path.join(path_to_models, args.model_name), weights_only=True)
     )
     model.to(args.device)
     model.eval()
