@@ -214,34 +214,59 @@ class BalanceConvBlock(nn.Module):
     ):
         super(BalanceConvBlock, self).__init__(*args, **kwargs)
 
-        self._norm_conv_blk = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+        hori_conv = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, padding=1, bias=False
+        )
+        self._init_to_sobel(hori_conv, "horizontal")
+        self._hori_conv_blk = nn.Sequential(
+            hori_conv,
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
         )
-        self._vert_conv_blk = nn.Sequential(
-            nn.Conv2d(
-                in_channels,
-                out_channels,
-                kernel_size=(3, 1),
-                padding=(1, 0),
-                bias=False,
-            ),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-        )
-        self._weight = nn.Parameter(torch.tensor(0.0, dtype=torch.float32))
 
+        vert_conv = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, padding=1, bias=False
+        )
+        self._init_to_sobel(vert_conv, "vertical")
+        self._vert_conv_blk = nn.Sequential(
+            vert_conv,
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(),
+        )
+
+        self._balance_weight = nn.Parameter(torch.tensor(0.0, dtype=torch.float32))
         self._activation_func = activation_func
 
+    def _init_to_sobel(self, conv: nn.Conv2d, choice: str):
+        if choice == "horizontal":
+            sobel = torch.tensor(
+                [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32
+            ).expand(conv.out_channels, conv.in_channels, 3, 3)
+        elif choice == "vertical":
+            sobel = torch.tensor(
+                [[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32
+            ).expand(conv.out_channels, conv.in_channels, 3, 3)
+        else:
+            raise ValueError("Invalid choice")
+
+        conv.weight = nn.Parameter(sobel)
+
     def forward(self, src: torch.Tensor) -> torch.Tensor:
-        norm_conv = self._norm_conv_blk(src)
+        hori_conv = self._hori_conv_blk(src)
         vert_conv = self._vert_conv_blk(src)
 
-        norm_weight = self._weight.sigmoid()
-        x = norm_weight * norm_conv + (1 - norm_weight) * vert_conv
+        balance_weight = self._balance_weight.sigmoid()
+        x = balance_weight * hori_conv + (1 - balance_weight) * vert_conv
 
         if self._activation_func is not None:
             x = self._activation_func(x)
 
         return x
+
+
+if __name__ == "__main__":
+    # test the blocks
+    input_tensor = torch.randn(2, 3, 256, 256)
+
+    output = BalanceConvBlock(3, 64)(input_tensor)
+    print(output.shape)
