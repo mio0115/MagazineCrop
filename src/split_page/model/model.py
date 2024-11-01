@@ -3,7 +3,7 @@ from torch import nn
 import torchvision as tv
 
 from ...model_templates import templates
-from ...model_templates.blocks.blocks import ResidualBalanceConvBlock, ScaleAttention
+from ...model_templates.blocks.blocks import BalanceConvBlock, ScaleAttention
 
 
 class SimpleLineEstimator(nn.Module):
@@ -12,14 +12,42 @@ class SimpleLineEstimator(nn.Module):
 
         self._backbone = backbone
 
-        self._contract_small = ResidualBalanceConvBlock(256, 256)
-        self._contract_medium = nn.Sequential(
-            ResidualBalanceConvBlock(256, 256),
-            nn.MaxPool2d(2, 2),
+        self._for_small_scale = nn.Sequential(
+            BalanceConvBlock(256, 512), BalanceConvBlock(512, 256)
+        )
+        self._for_medium_scale = nn.Sequential(
+            BalanceConvBlock(256, 512),
+            BalanceConvBlock(512, 256),
+        )
+        self._for_large_scale = nn.Sequential(
+            BalanceConvBlock(256, 512),
+            BalanceConvBlock(512, 256),
+        )
+        self._contract_medium = nn.Conv2d(
+            in_channels=256,
+            out_channels=256,
+            kernel_size=3,
+            padding=2,
+            stride=2,
+            dilation=2,
         )
         self._contract_large = nn.Sequential(
-            ResidualBalanceConvBlock(256, 256),
-            nn.MaxPool2d(4, 4),
+            nn.Conv2d(
+                in_channels=256,
+                out_channels=256,
+                kernel_size=3,
+                padding=2,
+                stride=2,
+                dilation=2,
+            ),
+            nn.Conv2d(
+                in_channels=256,
+                out_channels=256,
+                kernel_size=3,
+                padding=2,
+                stride=2,
+                dilation=2,
+            ),
         )
 
         self._attention = ScaleAttention()
@@ -41,9 +69,12 @@ class SimpleLineEstimator(nn.Module):
     def forward(self, src: torch.Tensor) -> torch.Tensor:
         features_list = self._backbone(src)
 
-        small_features = self._contract_small(features_list[2])
-        medium_features = self._contract_medium(features_list[1])
-        large_features = self._contract_large(features_list[0])
+        small_features = features_list[2] + self._for_small_scale(features_list[2])
+        medium_features = features_list[1] + self._for_medium_scale(features_list[1])
+        large_features = features_list[0] + self._for_large_scale(features_list[0])
+
+        medium_features = self._contract_medium(medium_features)
+        large_features = self._contract_large(large_features)
 
         combined_features = self._attention(
             [small_features, medium_features, large_features]
