@@ -25,7 +25,7 @@ def train(
     valid: bool = True,
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 15, 20])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20, 25])
     model = model.to(args.device)
     path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
 
