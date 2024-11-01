@@ -217,12 +217,12 @@ class BalanceConvBlock(nn.Module):
         # hori_conv = nn.Conv2d(
         #     in_channels, out_channels, kernel_size=3, padding=1, bias=False
         # )
-        norm_conv = nn.Conv2d(
+        hori_conv = nn.Conv2d(
             in_channels, out_channels, kernel_size=3, padding=1, bias=False
         )
-        # self._init_to_sobel(hori_conv, "horizontal")
+        self._init_to_sobel(hori_conv, "horizontal")
         self._hori_conv_blk = nn.Sequential(
-            norm_conv,
+            hori_conv,
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
         )
