@@ -214,12 +214,15 @@ class BalanceConvBlock(nn.Module):
     ):
         super(BalanceConvBlock, self).__init__(*args, **kwargs)
 
-        hori_conv = nn.Conv2d(
+        # hori_conv = nn.Conv2d(
+        #     in_channels, out_channels, kernel_size=3, padding=1, bias=False
+        # )
+        norm_conv = nn.Conv2d(
             in_channels, out_channels, kernel_size=3, padding=1, bias=False
         )
-        self._init_to_sobel(hori_conv, "horizontal")
+        # self._init_to_sobel(hori_conv, "horizontal")
         self._hori_conv_blk = nn.Sequential(
-            hori_conv,
+            norm_conv,
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
         )
@@ -277,7 +280,10 @@ class ResidualBalanceConvBlock(nn.Module):
 
         self._conv_block = BalanceConvBlock(in_channels, out_channels, activation_func)
         self._residual_conv = (
-            nn.Conv2d(in_channels, out_channels, kernel_size=1)
+            nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1),
+                nn.BatchNorm2d(out_channels),
+            )
             if in_channels != out_channels
             else nn.Identity()
         )
