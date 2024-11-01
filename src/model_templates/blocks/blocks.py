@@ -252,7 +252,7 @@ class BalanceConvBlock(nn.Module):
         conv.weight = nn.Parameter(sobel)
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
-        norm_conv = self._hori_conv_blk(src)
+        norm_conv = self._norm_conv_blk(src)
         vert_conv = self._vert_conv_blk(src)
 
         balance_weight = self._balance_weight.sigmoid()
