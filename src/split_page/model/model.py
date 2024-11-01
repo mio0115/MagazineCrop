@@ -41,7 +41,7 @@ class SimpleLineEstimator(nn.Module):
     def forward(self, src: torch.Tensor) -> torch.Tensor:
         features_list = self._backbone(src)
 
-        small_features = features_list[2]
+        small_features = self._contract_small(features_list[2])
         medium_features = self._contract_medium(features_list[1])
         large_features = self._contract_large(features_list[0])
 
