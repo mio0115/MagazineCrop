@@ -27,9 +27,8 @@ class SimpleLineEstimator(nn.Module):
             in_channels=256,
             out_channels=256,
             kernel_size=3,
-            padding=2,
+            padding=1,
             stride=2,
-            dilation=2,
         )
         self._contract_large = nn.Sequential(
             nn.Conv2d(
@@ -39,14 +38,15 @@ class SimpleLineEstimator(nn.Module):
                 padding=2,
                 stride=2,
                 dilation=2,
+                bias=False,
             ),
+            nn.BatchNorm2d(256),
             nn.Conv2d(
                 in_channels=256,
                 out_channels=256,
                 kernel_size=3,
-                padding=2,
+                padding=1,
                 stride=2,
-                dilation=2,
             ),
         )
 
