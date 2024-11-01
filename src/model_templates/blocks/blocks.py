@@ -214,15 +214,12 @@ class BalanceConvBlock(nn.Module):
     ):
         super(BalanceConvBlock, self).__init__(*args, **kwargs)
 
-        # hori_conv = nn.Conv2d(
-        #     in_channels, out_channels, kernel_size=3, padding=1, bias=False
-        # )
-        hori_conv = nn.Conv2d(
+        norm_conv = nn.Conv2d(
             in_channels, out_channels, kernel_size=3, padding=1, bias=False
         )
-        self._init_to_sobel(hori_conv, "horizontal")
-        self._hori_conv_blk = nn.Sequential(
-            hori_conv,
+        # self._init_to_sobel(hori_conv, "horizontal")
+        self._norm_conv_blk = nn.Sequential(
+            norm_conv,
             nn.BatchNorm2d(out_channels),
             nn.ReLU(),
         )
@@ -255,11 +252,11 @@ class BalanceConvBlock(nn.Module):
         conv.weight = nn.Parameter(sobel)
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
-        hori_conv = self._hori_conv_blk(src)
+        norm_conv = self._hori_conv_blk(src)
         vert_conv = self._vert_conv_blk(src)
 
         balance_weight = self._balance_weight.sigmoid()
-        x = balance_weight * hori_conv + (1 - balance_weight) * vert_conv
+        x = balance_weight * norm_conv + (1 - balance_weight) * vert_conv
 
         if self._activation_func is not None:
             x = self._activation_func(x)
