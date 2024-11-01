@@ -303,13 +303,64 @@ class ScaleAttention(nn.Module):
         weights = self._to_weights(torch.cat(features, 1).permute(0, 2, 3, 1)).softmax(
             -1
         )
+        print(weights.shape)
+        print(weights[..., 0])
 
         # features[0]: (bs, c, h, w)
+        # different weights for each feature map
+        # for each feature map, same weights for each channel; different weights for each pixel
         bs, h, w, _ = weights.shape
         reduced_features = (
             features[0] * weights[..., 0].view(bs, 1, h, w)
             + features[1] * weights[..., 1].view(bs, 1, h, w)
             + features[2] * weights[..., 2].view(bs, 1, h, w)
+        )
+
+        return reduced_features
+
+
+class SpatialScaleAttention(nn.Module):
+    def __init__(self, in_channels: int = 256):
+        super(SpatialScaleAttention, self).__init__()
+
+        self._to_weights = nn.Conv2d(in_channels * 3, 3, kernel_size=1)
+
+    def forward(self, features) -> torch.Tensor:
+        concat_features = torch.cat(features, 1)
+        weights = self._to_weights(concat_features).softmax(1)
+
+        print(weights.shape)
+        print(features[0].shape)
+        print(weights[:, 0:1].shape)
+
+        reduced_features = (
+            features[0] * weights[:, 0:1]
+            + features[1] * weights[:, 1:2]
+            + features[2] * weights[:, 2:3]
+        )
+
+        return reduced_features
+
+
+class ChannelScaleAttention(nn.Module):
+    def __init__(self, in_channels: int = 256):
+        super(ChannelScaleAttention, self).__init__()
+
+        self._to_weights = nn.Sequential(
+            nn.Conv2d(in_channels * 3, in_channels, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels, 3 * in_channels, kernel_size=1),
+        )
+
+    def forward(self, features):
+        bs, ch, h, w = features[0].shape
+        concat_features = torch.cat(features, 1)
+        weights = self._to_weights(concat_features).view(bs, 3, ch, h, w).softmax(1)
+
+        reduced_features = (
+            features[0] * weights[:, 0]
+            + features[1] * weights[:, 1]
+            + features[2] * weights[:, 2]
         )
 
         return reduced_features

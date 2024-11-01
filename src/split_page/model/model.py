@@ -3,7 +3,12 @@ from torch import nn
 import torchvision as tv
 
 from ...model_templates import templates
-from ...model_templates.blocks.blocks import BalanceConvBlock, ScaleAttention
+from ...model_templates.blocks.blocks import (
+    BalanceConvBlock,
+    ScaleAttention,
+    SpatialScaleAttention,
+    ChannelScaleAttention,
+)
 
 
 class SimpleLineEstimator(nn.Module):
@@ -50,7 +55,7 @@ class SimpleLineEstimator(nn.Module):
             ),
         )
 
-        self._attention = ScaleAttention()
+        self._attention = ChannelScaleAttention()
         self._avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self._x_reg_head = nn.Sequential(
             nn.Linear(256, 128),
@@ -61,7 +66,9 @@ class SimpleLineEstimator(nn.Module):
             nn.Linear(64, 1),
         )
         self._theta_reg_head = nn.Sequential(
-            nn.Linear(256, 64),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
         )
