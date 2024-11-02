@@ -303,9 +303,6 @@ class ScaleAttention(nn.Module):
         weights = self._to_weights(torch.cat(features, 1).permute(0, 2, 3, 1)).softmax(
             -1
         )
-        print(weights.shape)
-        print(weights[..., 0])
-
         # features[0]: (bs, c, h, w)
         # different weights for each feature map
         # for each feature map, same weights for each channel; different weights for each pixel
@@ -328,10 +325,6 @@ class SpatialScaleAttention(nn.Module):
     def forward(self, features) -> torch.Tensor:
         concat_features = torch.cat(features, 1)
         weights = self._to_weights(concat_features).softmax(1)
-
-        print(weights.shape)
-        print(features[0].shape)
-        print(weights[:, 0:1].shape)
 
         reduced_features = (
             features[0] * weights[:, 0:1]
