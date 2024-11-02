@@ -25,7 +25,7 @@ def train(
     valid: bool = True,
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20, 25])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 30, 35])
     model = model.to(args.device)
     path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
 
@@ -70,7 +70,7 @@ def train(
 
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
-                    torch.save(model.state_dict(), path_to_save)
+                    torch.save(model, path_to_save)
                     output_avg_vloss += "\tNew best loss, Saved!"
                 print(output_avg_vloss)
                 print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
