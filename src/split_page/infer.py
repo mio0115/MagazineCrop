@@ -32,7 +32,8 @@ if __name__ == "__main__":
         "C3920",
     ]
     path_to_models = os.path.join(os.getcwd(), "src", "split_page", "checkpoints")
-    model = torch.load(
+
+    model = torch.load_(
         os.path.join(path_to_models, args.model_name), weights_only=False
     )
 
