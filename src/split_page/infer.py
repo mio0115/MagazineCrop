@@ -33,7 +33,7 @@ if __name__ == "__main__":
     ]
     path_to_models = os.path.join(os.getcwd(), "src", "split_page", "checkpoints")
 
-    model = torch.load_(
+    model = torch.load(
         os.path.join(path_to_models, args.model_name), weights_only=False
     )
 
@@ -77,6 +77,8 @@ if __name__ == "__main__":
 
                 point_1 = (line_x_coord - 1000, int(height // 2 - line_slope * 1000))
                 point_2 = (line_x_coord + 1000, int(height // 2 + line_slope * 1000))
+                # point_1 = (line_x_coord, int(height // 2 - 5000))
+                # point_2 = (line_x_coord, int(height // 2 + 5000))
 
                 cv2.line(
                     image, pt1=point_1, pt2=point_2, color=(0, 0, 255), thickness=3
