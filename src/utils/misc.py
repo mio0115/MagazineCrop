@@ -12,6 +12,24 @@ def to_onehot(tensor: torch.Tensor) -> torch.Tensor:
     return onehot
 
 
+def scharr_edge_detection(image: np.ndarray) -> np.ndarray:
+    """
+    This function is to apply scharr edge detection to the given image.'
+    This function works on grayscale image only.
+    """
+
+    # apply scharr edge detection
+    gradient_x = cv2.Scharr(image, cv2.CV_64F, 1, 0)
+    gradient_y = cv2.Scharr(image, cv2.CV_64F, 0, 1)
+
+    # compute gradient magnitude
+    gradient_magnitude = cv2.magnitude(gradient_x, gradient_y)
+    # convert to uint8
+    gradient_magnitude = cv2.convertScaleAbs(gradient_magnitude)
+
+    return gradient_magnitude
+
+
 def polygon_to_mask(polygon, height: int, width: int):
     mask = np.zeros((height, width), dtype=np.uint8)
     pts = np.array(polygon, np.int32)
