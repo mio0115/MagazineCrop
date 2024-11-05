@@ -14,6 +14,39 @@ from ..utils.misc import resize_with_aspect_ratio
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
 
 
+class PredictSplitCoord(object):
+    def __init__(self, args, new_size: tuple[int] = (1024, 1024)):
+        self._model_device = args.device
+        self._model = torch.load(
+            os.path.join(
+                os.getcwd(), "src", "split_page", "checkpoints", args.model_name
+            ),
+            weights_only=False,
+        )
+        self._model.to(self._model_device)
+
+        self._new_size = new_size
+
+    def __call__(self, image: np.ndarray) -> tuple[int]:
+        height, width = image.shape[:2]
+
+        resized_image, _ = resize_with_aspect_ratio(image, target_size=self._new_size)
+
+        with torch.no_grad():
+            in_image = (
+                torch.tensor(resized_image).unsqueeze(0).permute(0, 3, 1, 2).float()
+                / 255.0
+            )
+            in_image = in_image.to(self._model_device)
+            logits = self._model(in_image)
+            line_coords = logits.sigmoid().cpu().numpy()
+
+        line_x_coord = line_coords[..., 0].item() * width
+        line_theta = line_coords[..., 1] * np.pi
+
+        return line_x_coord, line_theta
+
+
 if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
