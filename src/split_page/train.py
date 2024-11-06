@@ -101,16 +101,10 @@ if __name__ == "__main__":
     loss_fn = MeanSquaredLoss().to(args.device)
 
     if args.resume:
-        model.load_state_dict(
-            torch.load(
-                os.path.join(
-                    os.getcwd(),
-                    "checkpoints",
-                    args.resume_from,
-                ),
-                weights_only=True,
-            )
-        )
+        model = torch.load(
+            os.path.join(os.getcwd(), "checkpoints", args.resume_from),
+            weights_only=False,
+        ).to(args.device)
 
     train_dataset = MagazineCropDataset(
         split="train",
