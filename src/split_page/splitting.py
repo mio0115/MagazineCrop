@@ -20,30 +20,42 @@ class SplitPage(object):
         enhanced_img = self._clahe.apply(gray_image)
         # apply gaussian blur to reduce noise
         # TODO: compare results with/without clahe enhancement
-        blurred_img = cv2.GaussianBlur(enhanced_img, (11, 11), 0)
+        # blurred_img = cv2.GaussianBlur(enhanced_img, (11, 11), 0)
+        blurred_img = cv2.bilateralFilter(enhanced_img, 9, 75, 75)
         # apply vertical sobel filter to enhance the vertical edges
         sobel_vertical = cv2.Sobel(blurred_img, cv2.CV_64F, 1, 0, ksize=3)
         abs_sobel_vertical = np.absolute(sobel_vertical)
         sobel_vertical_8u = np.uint8(abs_sobel_vertical)
+        # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 15))
+        # morph_img = cv2.morphologyEx(blurred_img, cv2.MORPH_GRADIENT, kernel)
         # normalize the Sobel image
         normalized_sobel = cv2.normalize(
             sobel_vertical_8u, None, 0, 255, cv2.NORM_MINMAX
         )
         # apply binary threshold to emphasize strong edges
-        _, binary_img = cv2.threshold(normalized_sobel, 50, 255, cv2.THRESH_BINARY)
+        _, binary_img = cv2.threshold(
+            normalized_sobel, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+
         # apply canny edge detection to detect edges
         canny_img = cv2.Canny(binary_img, 50, 150)
 
-        # cv2.namedWindow("image", cv2.WINDOW_NORMAL)
-        # cv2.resizeWindow("image", 2048, 1024)
-        # cv2.imshow(
-        #     "image",
-        #     cv2.hconcat(
-        #         [enhanced_img, blurred_img, sobel_vertical_8u, binary_img, canny_img]
-        #     ),
-        # )
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
+        cv2.namedWindow("image", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("image", 2048, 1024)
+        cv2.imshow(
+            "image",
+            cv2.hconcat(
+                [
+                    blurred_img,
+                    sobel_vertical_8u,
+                    normalized_sobel,
+                    binary_img,
+                    canny_img,
+                ]
+            ),
+        )
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
         lines = cv2.HoughLinesP(
             canny_img,
@@ -51,7 +63,7 @@ class SplitPage(object):
             theta=np.pi / 180.0,
             threshold=50,
             minLineLength=50,
-            maxLineGap=500,
+            maxLineGap=5,
         )
 
         if lines is not None:
@@ -82,7 +94,13 @@ class SplitPage(object):
             angle = arc_angle * 180 / np.pi
             if angle < 80 or angle > 100:
                 continue
-            all_line_segments.setdefault((round(intersect_x), round(angle)), []).append(
+
+            intersect_x = round(intersect_x)
+            if intersect_x % 10 >= 5:
+                intersect_x = (intersect_x // 10 + 1) * 10
+            else:
+                intersect_x = intersect_x // 10 * 10
+            all_line_segments.setdefault((intersect_x, round(angle)), []).append(
                 [x1, y1, x2, y2]
             )
 
