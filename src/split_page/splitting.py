@@ -12,46 +12,42 @@ from ..utils.arg_parser import get_parser
 class SplitPage(object):
     def __init__(self, args):
         self._predict_coord = PredictSplitCoord(args)
-        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
+        self._morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 
     def _get_hough_lines(self, image: np.ndarray) -> np.ndarray:
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         # apply CLAHE to enhance the contrast of the image
         enhanced_img = self._clahe.apply(gray_image)
-        # apply bilateralFilter to reduce noise
-        blurred_img = cv2.bilateralFilter(enhanced_img, 9, 75, 75)
+        # apply GaussianBlur to reduce noise
+        blurred_img = cv2.GaussianBlur(enhanced_img, (11, 11), 0)
         # apply vertical sobel filter to enhance the vertical edges
         sobel_vertical = cv2.Sobel(blurred_img, cv2.CV_64F, 1, 0, ksize=3)
         abs_sobel_vertical = np.absolute(sobel_vertical)
         sobel_vertical_8u = np.uint8(abs_sobel_vertical)
-        # normalize the Sobel image
-        normalized_sobel = cv2.normalize(
-            sobel_vertical_8u, None, 0, 255, cv2.NORM_MINMAX
-        )
-        # apply binary threshold to emphasize strong edges
-        _, binary_img = cv2.threshold(
-            normalized_sobel, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        # apply morphological opening to remove noise
+        morph_img = cv2.morphologyEx(
+            sobel_vertical_8u, cv2.MORPH_OPEN, self._morph_kernel
         )
 
         # apply canny edge detection to detect edges
-        canny_img = cv2.Canny(binary_img, 50, 150)
+        canny_img = cv2.Canny(morph_img, 30, 100)
 
-        # cv2.namedWindow("image", cv2.WINDOW_NORMAL)
-        # cv2.resizeWindow("image", 2048, 1024)
-        # cv2.imshow(
-        #     "image",
-        #     cv2.hconcat(
-        #         [
-        #             blurred_img,
-        #             sobel_vertical_8u,
-        #             normalized_sobel,
-        #             binary_img,
-        #             canny_img,
-        #         ]
-        #     ),
-        # )
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
+        cv2.namedWindow("image", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("image", 2048, 1024)
+        cv2.imshow(
+            "image",
+            cv2.hconcat(
+                [
+                    blurred_img,
+                    sobel_vertical_8u,
+                    morph_img,
+                    canny_img,
+                ]
+            ),
+        )
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
         lines = cv2.HoughLinesP(
             canny_img,
