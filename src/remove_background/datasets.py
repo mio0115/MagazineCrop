@@ -3,6 +3,7 @@ import json
 from PIL import Image
 
 import cv2
+import numpy as np
 from torch.utils.data import Dataset
 from torchvision import datasets as tv_datasets
 
@@ -65,6 +66,7 @@ class MagazineCropDataset(Dataset):
         )
 
         image = cv2.equalizeHist(image)[..., None]
+        mask = mask.astype(np.float32)
 
         if self._transforms is not None:
             image, mask = self._transforms(image, mask)
