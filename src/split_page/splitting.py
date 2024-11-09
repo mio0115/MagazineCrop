@@ -1,6 +1,5 @@
 import os
 
-import torch
 import cv2
 import numpy as np
 
@@ -33,21 +32,21 @@ class SplitPage(object):
         # apply canny edge detection to detect edges
         canny_img = cv2.Canny(morph_img, 30, 100)
 
-        cv2.namedWindow("image", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("image", 2048, 1024)
-        cv2.imshow(
-            "image",
-            cv2.hconcat(
-                [
-                    blurred_img,
-                    sobel_vertical_8u,
-                    morph_img,
-                    canny_img,
-                ]
-            ),
-        )
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        # cv2.namedWindow("image", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("image", 2048, 1024)
+        # cv2.imshow(
+        #     "image",
+        #     cv2.hconcat(
+        #         [
+        #             blurred_img,
+        #             sobel_vertical_8u,
+        #             morph_img,
+        #             canny_img,
+        #         ]
+        #     ),
+        # )
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
         lines = cv2.HoughLinesP(
             canny_img,
