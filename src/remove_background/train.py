@@ -5,7 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import numpy as np
 
-from .model.model_unet_pp import build_unetplusplus
+from .model.model_unet_pp import build_model
 from .datasets import MyVOCSegmentation, MagazineCropDataset
 from .transforms import (
     build_transforms,
@@ -53,7 +53,7 @@ def train(
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
-        print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<11}: {avg_loss:.4f}")
+        print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<11}: {avg_loss:.6f}")
 
         metrics = {
             "pixel_acc": 0.0,
@@ -87,17 +87,17 @@ def train(
                 for key in metrics.keys():
                     metrics[key] /= ind + 1
 
-                output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.4f}\n"
+                output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.6f}\n"
                 for key in metrics.keys():
-                    output_avg_vloss += f"\t{key:<11}: {metrics[key]:.4f}\n"
+                    output_avg_vloss += f"\t{key:<11}: {metrics[key]:.6f}\n"
                 output_avg_vloss += "\n"
 
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
-                    torch.save(model.state_dict(), path_to_save)
+                    torch.save(model, path_to_save)
                     output_avg_vloss += "\tNew best loss, Saved!"
                 print(output_avg_vloss)
-                print(f"\t{'Best Loss':<11}: {best_loss:.4f}")
+                print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
 
 
 if __name__ == "__main__":
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     path_to_train = os.path.join(os.getcwd(), "data", "train_data")
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
-    model = build_unetplusplus(number_of_classes=1)
+    model = build_model(number_of_classes=1)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
