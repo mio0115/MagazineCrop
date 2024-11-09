@@ -6,6 +6,8 @@ import torchvision.transforms as T
 import numpy as np
 import cv2
 
+from ..utils.misc import resize_with_aspect_ratio
+
 
 class ImageToArray(object):
     def __init__(self, normalize=True):
@@ -17,7 +19,7 @@ class ImageToArray(object):
         else:
             img_tensor = np.array(img, dtype=np.uint8)
 
-        tgt_tensor = np.array(tgt, dtype=np.int64)
+        tgt_tensor = np.array(tgt, dtype=np.float32)
 
         return img_tensor, tgt_tensor
 
@@ -55,22 +57,24 @@ class Rotate(object):
         # rotate the image with (intersection_x, height//2) as the center
         rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 
-        rotated_img = cv2.warpAffine(img, rot_mat, (width, height))[..., None]
+        rotated_img = cv2.warpAffine(img, rot_mat, (width, height))
         rotated_tgt = cv2.warpAffine(
             tgt, rot_mat, (width, height), flags=cv2.INTER_NEAREST
         )
+        if img.ndim > rotated_img.ndim:
+            rotated_img = rotated_img[..., None]
 
         return rotated_img, rotated_tgt
 
 
 class RandomHorizontalFlip(object):
-    def __init__(self, probability=0.5):
-        self._prob = probability
+    def __init__(self, not_flip_prob=0.5):
+        self._not_flip_prob = not_flip_prob
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        if np.random.rand() < self._prob:
+        if np.random.rand() >= self._not_flip_prob:
             img = np.flip(img, axis=1)
             tgt = np.flip(tgt, axis=1)
 
@@ -91,34 +95,51 @@ class RandomResizedCrop(object):
         size: tuple[int] = (224, 224),
         scale: tuple[float] = (0.08, 1.0),
         ratio: tuple[float] = (0.75, 1.333),
+        not_crop_prob: float = 0.2,
         number_of_classes: int = 20,
     ):
         self._size = size
         self._scale = scale
         self._ratio = ratio
         self._num_cls = number_of_classes
+        self._attempt_limit = 50
+        self._not_crop_prob = not_crop_prob
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         height, width, _ = img.shape
-        scale = np.random.uniform(self._scale[0], self._scale[1])
-        ratio = np.random.uniform(self._ratio[0], self._ratio[1])
+        area = height * width
 
-        new_area = height * width * scale
-        new_height = min(int(round(math.sqrt(new_area * ratio))), height)
-        new_width = min(int(round(math.sqrt(new_area / ratio))), width)
+        resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
+        resized_tgt, _ = resize_with_aspect_ratio(tgt, target_size=self._size)
+        resized_tgt = resized_tgt.clip(max=self._num_cls)
+        if np.random.rand() < self._not_crop_prob:
+            # do not crop
+            if img.ndim > resized_img.ndim:
+                resized_img = resized_img[..., None]
+            return resized_img, resized_tgt
 
-        min_x = np.random.randint(0, width - new_width + 1)
-        min_y = np.random.randint(0, height - new_height + 1)
+        for _ in range(self._attempt_limit):
+            scale = np.random.uniform(self._scale[0], self._scale[1])
+            ratio = np.random.uniform(self._ratio[0], self._ratio[1])
 
-        new_img = img[min_y : min_y + new_height, min_x : min_x + new_width, :]
-        new_tgt = tgt[min_y : min_y + new_height, min_x : min_x + new_width]
+            new_area = area * scale
+            new_height = int(round(math.sqrt(new_area * ratio)))
+            new_width = int(round(math.sqrt(new_area / ratio)))
+            if new_height >= height or new_width >= width:
+                continue
 
-        resized_img = cv2.resize(new_img, self._size, interpolation=cv2.INTER_LINEAR)
-        resized_tgt = cv2.resize(
-            new_tgt, self._size, interpolation=cv2.INTER_NEAREST
-        ).clip(max=self._num_cls)
+            min_x = np.random.randint(0, width - new_width)
+            min_y = np.random.randint(0, height - new_height)
+
+            new_img = img[min_y : min_y + new_height, min_x : min_x + new_width, :]
+            new_tgt = tgt[min_y : min_y + new_height, min_x : min_x + new_width]
+
+            resized_img, _ = resize_with_aspect_ratio(new_img, target_size=self._size)
+            resized_tgt, _ = resize_with_aspect_ratio(new_tgt, target_size=self._size)
+            resized_tgt = resized_tgt.clip(max=self._num_cls)
+            break
 
         if img.ndim > resized_img.ndim:
             resized_img = resized_img[..., None]
@@ -134,10 +155,9 @@ class Resize(object):
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        resized_img = cv2.resize(img, self._size, interpolation=cv2.INTER_LINEAR)
-        resized_tgt = cv2.resize(tgt, self._size, interpolation=cv2.INTER_NEAREST).clip(
-            max=self._num_cls
-        )
+        resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
+        resized_tgt, _ = resize_with_aspect_ratio(tgt, target_size=self._size)
+        resized_tgt = resized_tgt.clip(max=self._num_cls)
 
         return resized_img, resized_tgt
 
@@ -198,10 +218,9 @@ def build_transforms(args):
     return tr_fn
 
 
-def build_valid_transform(args):
+def build_valid_transform():
     tr_fn = v2.Compose(
         [
-            ImageToArray(normalize=False),
             Resize(size=(512, 512), number_of_classes=20),
             CenterCrop(size=(496, 496)),
             MaskToBinary(number_of_classes=20),
@@ -218,6 +237,7 @@ def build_scanned_transforms():
             Rotate(),
             RandomHorizontalFlip(),
             RandomResizedCrop(size=(512, 512), scale=(0.25, 1.0)),
+            MaskToBinary(number_of_classes=20),
             ArrayToTensor(),
         ]
     )
