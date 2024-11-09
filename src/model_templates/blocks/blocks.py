@@ -136,6 +136,7 @@ class DoubleConvBlock(nn.Module):
     ):
         super(DoubleConvBlock, self).__init__(*args, **kwargs)
 
+        # extend the parameters to list if they are not
         if isinstance(bias, bool):
             bias = [bias, bias]
         if isinstance(activation_fn, nn.Module) or activation_fn is None:
@@ -147,36 +148,31 @@ class DoubleConvBlock(nn.Module):
         if isinstance(stride, int):
             stride = [stride, stride]
 
-        channels = [in_channels, inter_channels, out_channels]
-
-        self._conv_blocks = nn.ModuleList(
-            [
-                ConvBlock(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=ks,
-                    padding=p,
-                    stride=s,
-                    bias=b,
-                    activation_fn=a,
-                )
-                for in_channels, out_channels, ks, p, s, b, a in zip(
-                    channels[:-1],
-                    channels[1:],
-                    kernel_size,
-                    padding,
-                    stride,
-                    bias,
-                    activation_fn,
-                )
-            ]
+        self._conv_blocks = nn.Sequential(
+            ConvBlock(
+                in_channels=in_channels,
+                out_channels=inter_channels,
+                kernel_size=kernel_size[0],
+                padding=padding[0],
+                stride=stride[0],
+                bias=bias[0],
+                activation_fn=activation_fn[0],
+            ),
+            ConvBlock(
+                in_channels=inter_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size[1],
+                padding=padding[1],
+                stride=stride[1],
+                bias=bias[1],
+                activation_fn=activation_fn[1],
+            ),
         )
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
-        for conv_block in self._conv_blocks:
-            src = conv_block(src)
+        x = self._conv_blocks(src)
 
-        return src
+        return x
 
 
 class SqueezeExcitationBlock(nn.Module):
@@ -317,20 +313,22 @@ class ScaleAttention(nn.Module):
 
 
 class SpatialScaleAttention(nn.Module):
-    def __init__(self, in_channels: int = 256):
+    def __init__(self, in_channels: int = 256, factor: int = 3):
         super(SpatialScaleAttention, self).__init__()
 
-        self._to_weights = nn.Conv2d(in_channels * 3, 3, kernel_size=1)
+        self._to_weights = nn.Conv2d(
+            in_channels * factor, factor, kernel_size=1, bias=False
+        )
 
-    def forward(self, features) -> torch.Tensor:
+    def forward(self, features: list[torch.Tensor]) -> torch.Tensor:
         concat_features = torch.cat(features, 1)
         weights = self._to_weights(concat_features).softmax(1)
 
-        reduced_features = (
-            features[0] * weights[:, 0:1]
-            + features[1] * weights[:, 1:2]
-            + features[2] * weights[:, 2:3]
-        )
+        weighted_features = []
+        for idx, feature in enumerate(features):
+            weighted_features.append(feature * weights[:, idx : idx + 1])
+
+        reduced_features = torch.stack(weighted_features, 1).sum(1)
 
         return reduced_features
 
