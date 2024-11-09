@@ -2,7 +2,12 @@ import torch
 from torch import nn
 from torchvision import models as tv_models
 
-from .blocks.blocks import DoubleConvBlock, ContractBlock, BalanceConvBlock
+from .blocks.blocks import (
+    DoubleConvBlock,
+    ContractBlock,
+    BalanceConvBlock,
+    SpatialScaleAttention,
+)
 
 
 class UNetPlusPlus(nn.Module):
@@ -15,24 +20,41 @@ class UNetPlusPlus(nn.Module):
         self._contract_blk = contract_block
 
         self._expand_blks = nn.ModuleList()
-        for ind, (curr_lvl_ch, next_lvl_ch) in enumerate(
-            zip(embed_dims[:-1], embed_dims[1:])
-        ):
-            self._expand_blks.append(
-                nn.ModuleList(
-                    [
-                        DoubleConvBlock(
-                            in_channels=curr_lvl_ch * ind + next_lvl_ch,
+        self._pyramid_height = len(embed_dims) - 1
+
+        for level_idx in range(self._pyramid_height):
+            curr_lvl_ch = embed_dims[level_idx]
+            next_lvl_ch = embed_dims[level_idx + 1]
+            expand_level = nn.ModuleList()
+
+            num_nested_convs = self._pyramid_height - level_idx
+            for nested_idx in range(num_nested_convs):
+                factor = nested_idx + 1
+
+                expand_block = nn.ModuleDict(
+                    {
+                        "scale_attention": (
+                            SpatialScaleAttention(
+                                in_channels=curr_lvl_ch, factor=factor
+                            )
+                            if factor > 1
+                            else nn.Identity()
+                        ),
+                        "conv_block": DoubleConvBlock(
+                            in_channels=curr_lvl_ch + next_lvl_ch,
                             inter_channels=curr_lvl_ch,
                             out_channels=curr_lvl_ch,
                             bias=False,
                             activation_fn=[nn.ReLU(), None],
-                        )
-                        for ind in range(1, len(embed_dims) - ind)
-                    ]
+                        ),
+                    }
                 )
-            )
+                expand_level.append(expand_block)
+            self._expand_blks.append(expand_level)
 
+        self._weighted_sum = SpatialScaleAttention(
+            in_channels=embed_dims[0], factor=self._pyramid_height
+        )
         self._weights = nn.Parameter(torch.ones(4, dtype=torch.float32))
         self.out_channels = embed_dims[0]
 
@@ -46,27 +68,29 @@ class UNetPlusPlus(nn.Module):
 
         # execute contractive block
         src_list: list[torch.Tensor] = self._contract_blk(src)
-        src_list: list[list[torch.Tensor]] = [[src] for src in src_list]
+        nested_features: list[list[torch.Tensor]] = [[feature] for feature in src_list]
 
         # execute expansive block
-        for pyramid_level in range(1, len(src_list)):
-            for ind in range(len(src_list) - pyramid_level):
-                src_list[ind].append(
-                    self._expand_blks[ind][pyramid_level - 1](
-                        # concatenate the output of the previous block and the upsampled feature map
-                        torch.cat(
-                            src_list[ind] + [self._upsample(src_list[ind + 1][-1])],
-                            dim=1,
-                        )
-                    )
+        for pyramid_lvl in range(self._pyramid_height - 1, -1, -1):
+            for blk_ind in range(self._pyramid_height - pyramid_lvl):
+                features = nested_features[pyramid_lvl]
+                # apply the scale attention to the current feature map to reduce the channels
+                x = self._expand_blks[pyramid_lvl][blk_ind]["scale_attention"](features)
+                # concatenate the upsampled feature map from the previous level and the current feature map
+                upsampled = self._upsample(nested_features[pyramid_lvl + 1][blk_ind])
+                concat_feature = torch.cat(
+                    (x if isinstance(x, list) else [x]) + [upsampled], 1
+                )
+                # apply the double convolution block to the concatenated feature map
+                x = self._expand_blks[pyramid_lvl][blk_ind]["conv_block"](
+                    concat_feature
                 )
 
-        feature_maps = torch.stack(src_list[0][1:], dim=1)
-        weighted_features = torch.sum(
-            self._weights.softmax(-1).view(1, -1, 1, 1, 1) * feature_maps, dim=1
-        )
+                nested_features[pyramid_lvl].append(x)
 
-        return weighted_features
+        # apply the weighted sum to the output feature maps
+        output_logits = self._weighted_sum(nested_features[0][1:])
+        return output_logits
 
 
 class FeaturePyramidNetwork(nn.Module):
