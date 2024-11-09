@@ -159,6 +159,9 @@ class Resize(object):
         resized_tgt, _ = resize_with_aspect_ratio(tgt, target_size=self._size)
         resized_tgt = resized_tgt.clip(max=self._num_cls)
 
+        if img.ndim > resized_img.ndim:
+            resized_img = resized_img[..., None]
+
         return resized_img, resized_tgt
 
 
@@ -189,10 +192,8 @@ class ArrayToTensor(object):
 
 
 class MaskToBinary(object):
-    def __init__(self, number_of_classes: int, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(MaskToBinary, self).__init__(*args, **kwargs)
-
-        self._num_cls = number_of_classes
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
@@ -204,13 +205,13 @@ class MaskToBinary(object):
         return img, tgt
 
 
-def build_transforms(args):
+def build_transform():
     tr_fn = v2.Compose(
         [
             ImageToArray(normalize=False),
             RandomHorizontalFlip(),
             RandomResizedCrop(size=(512, 512)),
-            MaskToBinary(number_of_classes=20),
+            MaskToBinary(),
             ArrayToTensor(),
         ]
     )
@@ -221,9 +222,8 @@ def build_transforms(args):
 def build_valid_transform():
     tr_fn = v2.Compose(
         [
-            Resize(size=(512, 512), number_of_classes=20),
-            CenterCrop(size=(496, 496)),
-            MaskToBinary(number_of_classes=20),
+            Resize(size=(640, 640), number_of_classes=20),
+            MaskToBinary(),
             ArrayToTensor(),
         ]
     )
@@ -231,13 +231,13 @@ def build_valid_transform():
     return tr_fn
 
 
-def build_scanned_transforms():
+def build_scanned_transform():
     tr_fn = v2.Compose(
         [
             Rotate(),
             RandomHorizontalFlip(),
-            RandomResizedCrop(size=(512, 512), scale=(0.25, 1.0)),
-            MaskToBinary(number_of_classes=20),
+            RandomResizedCrop(size=(640, 640), scale=(0.25, 1.0)),
+            MaskToBinary(),
             ArrayToTensor(),
         ]
     )
