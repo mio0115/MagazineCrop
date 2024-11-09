@@ -8,9 +8,9 @@ import numpy as np
 from .model.model_unet_pp import build_model
 from .datasets import MyVOCSegmentation, MagazineCropDataset
 from .transforms import (
-    build_transforms,
+    build_transform,
     build_valid_transform,
-    build_scanned_transforms,
+    build_scanned_transform,
 )
 from ..utils.arg_parser import get_parser
 from .loss import ComboLoss
@@ -139,17 +139,19 @@ if __name__ == "__main__":
     #     augment_factor=1,
     # )
     train_dataset = MagazineCropDataset(
-        split="train", transforms=build_scanned_transforms()
+        split="train",
+        transforms=build_scanned_transform(),
+        augment_factor=args.augment_factor,
     )
     valid_dataset = MagazineCropDataset(
-        split="valid", transforms=build_scanned_transforms()
+        split="valid", transforms=build_valid_transform(), augment_factor=1
     )
     dataloader = {
         "train": DataLoader(
-            train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4
+            train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=5
         ),
         "valid": DataLoader(
-            valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4
+            valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=5
         ),
     }
 
