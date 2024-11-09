@@ -75,9 +75,10 @@ class MagazineCropDataset(Dataset):
 
 
 if __name__ == "__main__":
+    from torch.utils.data import DataLoader
+
     ds = MagazineCropDataset(split="train", transforms=build_scanned_transforms())
+    dl = DataLoader(ds, batch_size=2, num_workers=4)
 
-    img, mask = ds[1]
-
-    print(img.shape, mask.shape)
-    print(mask.unique())
+    for img, mask in dl:
+        continue
