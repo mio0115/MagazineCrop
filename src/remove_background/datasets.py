@@ -7,7 +7,6 @@ import numpy as np
 from torch.utils.data import Dataset
 from torchvision import datasets as tv_datasets
 
-from .transforms import build_scanned_transforms
 from ..utils.misc import polygon_to_mask
 
 
@@ -76,8 +75,9 @@ class MagazineCropDataset(Dataset):
 
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
+    from .transforms import build_scanned_transform
 
-    ds = MagazineCropDataset(split="train", transforms=build_scanned_transforms())
+    ds = MagazineCropDataset(split="train", transforms=build_scanned_transform())
     dl = DataLoader(ds, batch_size=2, num_workers=4)
 
     for img, mask in dl:
