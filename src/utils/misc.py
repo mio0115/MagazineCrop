@@ -80,6 +80,11 @@ def resize_with_aspect_ratio(
     height, width = img.shape[:2]
     target_height, target_width = target_size
 
+    if height * width <= target_height * target_width:
+        interpolation = cv2.INTER_CUBIC
+    else:
+        interpolation = cv2.INTER_AREA
+
     aspect_ratio = width / height
     if height > width:
         new_height = target_height
@@ -89,7 +94,7 @@ def resize_with_aspect_ratio(
         new_height = int(new_width / aspect_ratio)
 
     # resize the image
-    resized_img = cv2.resize(img, (new_width, new_height), cv2.INTER_LINEAR)
+    resized_img = cv2.resize(img, (new_width, new_height), interpolation)
 
     # compute padding to reach target size
     pad_height = target_height - new_height
