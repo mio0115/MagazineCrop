@@ -33,8 +33,7 @@ if __name__ == "__main__":
         os.getcwd(), "src", "remove_background", "checkpoints", args.model_name
     )
 
-    model = build_model(number_of_classes=1)
-    model.load_state_dict(torch.load(path_to_model, weights_only=True))
+    model = torch.load(path_to_model, weights_only=False)
     model.to(args.device)
     model.eval()
 
@@ -52,7 +51,7 @@ if __name__ == "__main__":
             image = cv2.imread(
                 os.path.join(path_to_dir, image_name), cv2.IMREAD_GRAYSCALE
             )
-            resized_image = resize_with_aspect_ratio(
+            resized_image, _ = resize_with_aspect_ratio(
                 image, target_size=(new_width, new_height)
             )
 
