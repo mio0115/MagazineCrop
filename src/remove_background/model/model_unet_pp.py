@@ -48,14 +48,18 @@ class IterativeModel(nn.Module):
             bias=False,
         )
         self._residual_blk = nn.Sequential(
-            nn.BatchNorm2d(backbones[0].out_channels), nn.ELU()
+            nn.BatchNorm2d(backbones[0].out_channels), nn.ReLU()
         )
 
     def forward(self, src):
         logits = []
 
         x = self._warmup(src)
-        for backbone in self._backbones:
+
+        x = self._backbones[0](x)
+        logits.append(self._to_logits(x).permute(0, 2, 3, 1).contiguous())
+
+        for backbone in self._backbones[1:]:
             tmp_x = backbone(x)
             x = x + self._residual_blk(tmp_x)
 
