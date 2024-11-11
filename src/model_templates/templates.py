@@ -63,9 +63,6 @@ class UNetPlusPlus(nn.Module):
         )
 
     def forward(self, src):
-        # permute the input tensor to (batch, channel, height, width)
-        src = src.permute(0, 3, 1, 2)
-
         # execute contractive block
         src_list: list[torch.Tensor] = self._contract_blk(src)
         nested_features: list[list[torch.Tensor]] = [[feature] for feature in src_list]
