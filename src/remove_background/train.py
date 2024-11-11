@@ -5,7 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import numpy as np
 
-from .model.model_unet_pp import build_model
+from .model.model_unet_pp import build_model, build_iterative_model
 from .datasets import MyVOCSegmentation, MagazineCropDataset
 from .transforms import (
     build_transform,
@@ -30,7 +30,7 @@ def train(
     valid: bool = True,
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[15, 25, 30])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 25, 30])
     model = model.to(args.device)
     path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
 
@@ -50,6 +50,7 @@ def train(
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
+            break
 
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
@@ -74,22 +75,23 @@ def train(
 
                     logits = model(src)
                     loss = loss_fn(logits, tgt)
-                    new_metrics: dict[str, torch.Tensor] = BinaryMetrics()(
-                        y_pred=logits, y_true=tgt
-                    )
+                    # new_metrics: dict[str, torch.Tensor] = BinaryMetrics()(
+                    #     y_pred=logits, y_true=tgt
+                    # )
 
-                    for key in new_metrics.keys():
-                        metrics[key] += new_metrics[key].item()
+                    # for key in new_metrics.keys():
+                    #     metrics[key] += new_metrics[key].item()
 
                     running_vloss += loss.item()
+                    break
 
                 avg_vloss = running_vloss / (ind + 1)
-                for key in metrics.keys():
-                    metrics[key] /= ind + 1
+                # for key in metrics.keys():
+                #     metrics[key] /= ind + 1
 
                 output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.6f}\n"
-                for key in metrics.keys():
-                    output_avg_vloss += f"\t{key:<11}: {metrics[key]:.6f}\n"
+                # for key in metrics.keys():
+                #     output_avg_vloss += f"\t{key:<11}: {metrics[key]:.6f}\n"
                 output_avg_vloss += "\n"
 
                 if avg_vloss < best_loss:
@@ -107,7 +109,8 @@ if __name__ == "__main__":
     path_to_train = os.path.join(os.getcwd(), "data", "train_data")
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
-    model = build_model(number_of_classes=1)
+    # model = build_model(number_of_classes=1)
+    model = build_iterative_model()
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -115,15 +118,13 @@ if __name__ == "__main__":
     loss_fn = ComboLoss(number_of_classes=1)
 
     if args.resume:
-        model.load_state_dict(
-            torch.load(
-                os.path.join(
-                    os.getcwd(),
-                    "checkpoints",
-                    args.resume_from,
-                ),
-                weights_only=True,
-            )
+        model = torch.load(
+            os.path.join(
+                os.getcwd(),
+                "checkpoints",
+                args.resume_from,
+            ),
+            weights_only=False,
         )
 
     # train_dataset = MyVOCSegmentation(

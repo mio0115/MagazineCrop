@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from torch import nn
 
 
@@ -78,14 +79,26 @@ class ComboLoss(nn.Module):
         else:
             self._ce_loss = nn.CrossEntropyLoss()
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        flatten_logits = logits.flatten(1, 2)
-        flatten_targets = targets.flatten(1, 2)
+    def forward(
+        self, logits: list[torch.Tensor], targets: torch.Tensor
+    ) -> torch.Tensor:
+        if not isinstance(logits, list):
+            logits = [logits]
 
-        if self._binary:
-            ce_loss = self._ce_loss(flatten_logits.squeeze(-1), flatten_targets.float())
-        else:
-            ce_loss = self._ce_loss(flatten_logits, flatten_targets)
-        dice_loss = self._dice_loss(flatten_logits, flatten_targets)
+        ce_loss, dice_loss = [], []
+        for logit in logits:
+            flatten_logits = logit.flatten(1, 2)
+            flatten_targets = targets.flatten(1, 2)
+
+            if self._binary:
+                ce_loss.append(
+                    self._ce_loss(flatten_logits.squeeze(-1), flatten_targets.float())
+                )
+            else:
+                ce_loss.append(self._ce_loss(flatten_logits, flatten_targets))
+            dice_loss.append(self._dice_loss(flatten_logits, flatten_targets))
+
+        ce_loss = torch.stack(ce_loss).mean()
+        dice_loss = torch.stack(dice_loss).mean()
 
         return self._alpha * ce_loss + dice_loss

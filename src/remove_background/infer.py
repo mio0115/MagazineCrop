@@ -13,6 +13,82 @@ from ..utils.misc import resize_with_aspect_ratio
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
 
 
+class PredictForeground(object):
+    def __init__(self, args, new_size: tuple[int] = (1024, 1024)):
+        self._model_device = args.device
+        self._model = torch.load(
+            os.path.join(
+                os.getcwd(), "src", "remove_background", "checkpoints", args.model_name
+            ),
+            weights_only=False,
+        )
+        self._model.to(self._model_device)
+
+        self._new_size = new_size
+
+    @staticmethod
+    def find_max_component(mask: np.ndarray) -> list[list[tuple[int]]]:
+        components = []
+        visited = np.zeros_like(mask)
+        directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+
+        def dfs_iter(start_ind):
+            nonlocal mask, visited, directions
+            stack = [start_ind]
+            component = [start_ind]
+
+            while stack:
+                x, y = stack.pop()
+                visited[x, y] = 1
+                component.append((x, y))
+
+                for dx, dy in directions:
+                    nx, ny = x + dx, y + dy
+                    if (
+                        0 <= nx < mask.shape[0]
+                        and 0 <= ny < mask.shape[1]
+                        and mask[nx, ny]
+                        and visited[nx, ny] == 0
+                    ):
+                        stack.append((nx, ny))
+
+            return component
+
+        max_component_size, max_component = 0, None
+        for x in range(mask.shape[0]):
+            for y in range(mask.shape[1]):
+                if mask[x, y] and visited[x, y] == 0:
+                    component = dfs_iter((x, y))
+                    if len(component) > max_component_size:
+                        max_component_size = len(component)
+                        max_component = component
+
+        new_mask = np.zeros_like(mask)
+        for x, y in max_component:
+            new_mask[x, y] = 1
+
+        return new_mask
+
+    def __call__(self, image: np.ndarray, is_gray: bool = False) -> np.ndarray:
+        if not is_gray:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        resized_image, _ = resize_with_aspect_ratio(image, target_size=self._new_size)
+
+        eh_image = cv2.equalizeHist(resized_image)
+
+        with torch.no_grad():
+            in_image = torch.tensor(eh_image)[None, :, :, None].float() / 255.0
+            in_image = in_image.to(self._model_device)
+            logits = self._model(in_image)
+            is_fg_prob = logits.sigmoid().squeeze().cpu().numpy()
+        fg_mask = is_fg_prob >= 0.5
+
+        # remove small components
+        max_fg_mask = PredictForeground.find_max_component(fg_mask)
+
+        return fg_mask
+
+
 if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
@@ -65,7 +141,7 @@ if __name__ == "__main__":
                 in_image = in_image.to(args.device)
                 logits = model(in_image)
                 is_fg_prob = logits.sigmoid().squeeze().cpu().numpy()
-            fg_mask = is_fg_prob >= 0.4
+            fg_mask = is_fg_prob >= 0.5
 
             masked_image = resized_image.copy()
             masked_image[~fg_mask] = 0

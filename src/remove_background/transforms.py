@@ -188,7 +188,8 @@ class ArrayToTensor(object):
         img = torch.from_numpy(img) / 255.0
         tgt = torch.from_numpy(tgt)
 
-        return img, tgt
+        # permute img to (C, H, W)
+        return img.permute(2, 0, 1), tgt
 
 
 class MaskToBinary(object):
