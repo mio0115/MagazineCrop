@@ -9,8 +9,8 @@ from ..utils.arg_parser import get_parser
 
 
 class SplitPage(object):
-    def __init__(self, args):
-        self._predict_coord = PredictSplitCoord(args)
+    def __init__(self, args, new_size: tuple[int] = (1024, 1024)):
+        self._predict_coord = PredictSplitCoord(args, new_size=new_size)
         self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
         self._morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 
@@ -155,7 +155,7 @@ class SplitPage(object):
         if best_coord is None:
             best_coord = (round(pred_x), 90)
 
-        return best_coord, (pred_x, pred_angle)
+        return best_coord
 
 
 def to_scharr(image: np.ndarray, is_gray: bool = False):
@@ -190,7 +190,7 @@ if __name__ == "__main__":
 
             im = cv2.imread(os.path.join(path_to_dir, file_name))
             height, width = im.shape[:2]
-            (x_coord, angle), (pred_x_coord, pred_angle) = split_page(im)
+            (x_coord, angle) = split_page(im)
 
             im_cpy = im.copy()
 
