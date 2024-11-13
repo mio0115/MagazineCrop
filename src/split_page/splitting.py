@@ -207,24 +207,24 @@ if __name__ == "__main__":
 
                 cv2.line(im_cpy, (x0, y0), (x1, y1), (0, 255, 0), 3)
 
-            if np.isclose(pred_angle, 90.0):
-                cv2.line(
-                    im_cpy,
-                    (pred_x_coord, 0),
-                    (pred_x_coord, im.shape[0]),
-                    (0, 0, 255),
-                    3,
-                )
-            else:
-                pred_arc_angle = pred_angle / 180 * np.pi
-                pred_slope = np.tan(pred_arc_angle)
+            # if np.isclose(pred_angle, 90.0):
+            #     cv2.line(
+            #         im_cpy,
+            #         (pred_x_coord, 0),
+            #         (pred_x_coord, im.shape[0]),
+            #         (0, 0, 255),
+            #         3,
+            #     )
+            # else:
+            #     pred_arc_angle = pred_angle / 180 * np.pi
+            #     pred_slope = np.tan(pred_arc_angle)
 
-                x0 = int(pred_x_coord) - width // 2
-                y0 = height // 2 - int(pred_slope * (width // 2))
-                x1 = int(pred_x_coord) + width // 2
-                y1 = height // 2 + int(pred_slope * (width // 2))
+            #     x0 = int(pred_x_coord) - width // 2
+            #     y0 = height // 2 - int(pred_slope * (width // 2))
+            #     x1 = int(pred_x_coord) + width // 2
+            #     y1 = height // 2 + int(pred_slope * (width // 2))
 
-                cv2.line(im_cpy, (x0, y0), (x1, y1), (0, 0, 255), 3)
+            #     cv2.line(im_cpy, (x0, y0), (x1, y1), (0, 0, 255), 3)
 
             cv2.namedWindow(f"{dir_name}/{file_name}", cv2.WINDOW_NORMAL)
             cv2.resizeWindow(f"{dir_name}/{file_name}", 2048, 1024)
