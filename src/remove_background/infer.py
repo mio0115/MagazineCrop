@@ -18,7 +18,11 @@ class PredictForeground(object):
         self._model_device = args.device
         self._model = torch.load(
             os.path.join(
-                os.getcwd(), "src", "remove_background", "checkpoints", args.model_name
+                os.getcwd(),
+                "src",
+                "remove_background",
+                "checkpoints",
+                args.rm_bg_model_name,
             ),
             weights_only=False,
         )

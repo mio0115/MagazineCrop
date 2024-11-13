@@ -19,7 +19,7 @@ class PredictSplitCoord(object):
         self._model_device = args.device
         self._model = torch.load(
             os.path.join(
-                os.getcwd(), "src", "split_page", "checkpoints", args.model_name
+                os.getcwd(), "src", "split_page", "checkpoints", args.sp_pg_model_name
             ),
             weights_only=False,
         )

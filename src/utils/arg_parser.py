@@ -91,5 +91,7 @@ def get_parser():
         help="path to the output directory",
     )
     parser.add_argument("--output_as", type=str, default="image.jpg", dest="output_as")
+    parser.add_argument("--rm_bg_model_name", type=str, default="rm_bg_entire_iter.pth")
+    parser.add_argument("--sp_pg_model_name", type=str, default="sp_pg_mod.pth")
 
     return parser
