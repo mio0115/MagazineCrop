@@ -28,7 +28,6 @@ class PredictForeground(object):
 
     @staticmethod
     def find_max_component(mask: np.ndarray) -> list[list[tuple[int]]]:
-        components = []
         visited = np.zeros_like(mask)
         directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
@@ -77,23 +76,26 @@ class PredictForeground(object):
         eh_image = cv2.equalizeHist(resized_image)
 
         with torch.no_grad():
-            in_image = torch.tensor(eh_image)[None, :, :, None].float() / 255.0
+            in_image = (
+                torch.tensor(eh_image)[None, :, :, None].permute(0, 3, 1, 2).float()
+                / 255.0
+            )
             in_image = in_image.to(self._model_device)
-            logits = self._model(in_image)
+            logits = self._model(in_image)[-1]
             is_fg_prob = logits.sigmoid().squeeze().cpu().numpy()
         fg_mask = is_fg_prob >= 0.5
 
-        # remove small components
+        # get the largest connected component
         max_fg_mask = PredictForeground.find_max_component(fg_mask)
 
-        return fg_mask
+        return max_fg_mask
 
 
 if __name__ == "__main__":
     parser = get_parser()
     args = parser.parse_args()
 
-    new_width, new_height = 1024, 1024
+    new_width, new_height = 640, 640
     dir_names = [
         "B6855",
         "B6960",
@@ -108,6 +110,7 @@ if __name__ == "__main__":
     path_to_model = os.path.join(
         os.getcwd(), "src", "remove_background", "checkpoints", args.model_name
     )
+    predict_fg = PredictForeground(args, new_size=(new_width, new_height))
 
     model = torch.load(path_to_model, weights_only=False)
     model.to(args.device)
@@ -127,27 +130,18 @@ if __name__ == "__main__":
             image = cv2.imread(
                 os.path.join(path_to_dir, image_name), cv2.IMREAD_GRAYSCALE
             )
-            resized_image, _ = resize_with_aspect_ratio(
+
+            fg_mask = predict_fg(image, is_gray=True)
+
+            masked_image = resize_with_aspect_ratio(
                 image, target_size=(new_width, new_height)
-            )
-
-            eh_image = cv2.equalizeHist(resized_image)
-
-            cv2.namedWindow("image", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("image", 2048, 1024)
-
-            with torch.no_grad():
-                in_image = torch.tensor(eh_image)[None, :, :, None].float() / 255.0
-                in_image = in_image.to(args.device)
-                logits = model(in_image)
-                is_fg_prob = logits.sigmoid().squeeze().cpu().numpy()
-            fg_mask = is_fg_prob >= 0.5
-
-            masked_image = resized_image.copy()
+            )[0]
             masked_image[~fg_mask] = 0
 
             mask = fg_mask.astype(np.uint8) * 255
 
-            cv2.imshow("image", cv2.hconcat([eh_image, mask, masked_image]))
+            cv2.namedWindow("image", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("image", new_width * 3, new_height)
+            cv2.imshow("image", cv2.hconcat([masked_image, mask, masked_image]))
             cv2.waitKey(0)
             cv2.destroyAllWindows()
