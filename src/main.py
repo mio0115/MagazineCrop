@@ -59,6 +59,8 @@ class Combination(object):
         line_x_coord, line_theta = dividing_line
 
         if np.isclose(line_theta, 90):
+            # if dividing line is vertical, we can simply split the mask into two parts
+            # then we pad the divided mask with zeros to make it rectangle
             left_mask = np.pad(
                 mask[:, :line_x_coord],
                 pad_width=((0, 0), (0, mask.shape[1] - line_x_coord)),
@@ -74,9 +76,7 @@ class Combination(object):
         else:
             left_mask, right_mask = [], []
             line_slope = np.tan(np.deg2rad(line_theta))
-            # first, we need to find the target width for both pages
-            # page_width = abs(int((mask.shape[0] / 2) / line_slope)) + line_x_coord
-            # then, we pad the divided mask with zeros to make it rectangle
+            # we pad the divided mask with zeros to make it rectangle
             for y in range(mask.shape[0]):
                 sep_pt = line_x_coord + int((y - mask.shape[0] / 2) / line_slope)
                 left_mask.append(
@@ -120,7 +120,7 @@ class Combination(object):
         cropped_image = image[top:bottom, left:right, :]
         cropped_mask = mask[top:bottom, left:right]
 
-        return cropped_image * cropped_mask[:, :, None]
+        return cropped_image * cropped_mask[:, :, None], cropped_mask
 
     def __call__(self, image: np.ndarray, is_gray: bool = False):
         fg_mask = self._predict_fg(image, is_gray=is_gray)
@@ -133,8 +133,8 @@ class Combination(object):
             fixed_mask, (line_x_coord, line_theta)
         )
 
-        left_page = Combination.drop_background(resized_img, left_mask)
-        right_page = Combination.drop_background(resized_img, right_mask)
+        left_page, left_mask = Combination.drop_background(resized_img, left_mask)
+        right_page, right_mask = Combination.drop_background(resized_img, right_mask)
 
         return left_page, right_page
 
