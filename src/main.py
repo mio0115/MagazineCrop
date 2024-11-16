@@ -136,7 +136,7 @@ class Combination(object):
         left_page, left_mask = Combination.drop_background(resized_img, left_mask)
         right_page, right_mask = Combination.drop_background(resized_img, right_mask)
 
-        return left_page, right_page
+        return (left_page, left_mask), (right_page, right_mask)
 
 
 if __name__ == "__main__":
