@@ -8,6 +8,7 @@ from .remove_background.infer import PredictForeground
 from .split_page.splitting import SplitPage
 from .utils.arg_parser import get_parser
 from .utils.misc import resize_with_aspect_ratio
+from .fix_distortion.fix_distortion import FixDistortion
 
 
 class Combination(object):
@@ -16,14 +17,27 @@ class Combination(object):
         self._predict_sp = predict_split_coord
 
     @staticmethod
-    def fix_mask(
-        mask: np.ndarray, dividing_line: tuple[int, float], thresh: float = 0.9
-    ) -> np.ndarray:
-        line_x_coord, line_theta = dividing_line
+    def fix_mask(mask: np.ndarray, thresh: float = 0.9) -> np.ndarray:
+        amplified_mask = (mask.copy() * 255).astype(np.uint8)
 
-        length = Combination.compute_line_length(mask, (line_x_coord, line_theta))
+        # find the largest contour in the mask
+        # note that there is only one component in the mask
+        contours, _ = cv2.findContours(
+            amplified_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        largest_contour = max(contours, key=cv2.contourArea)
 
-        # TODO: fill the mask on edges
+        # approximate the largest contour with a polygon
+        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+        approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+
+        # find the minimum area rectangle that encloses the polygon
+        rect = cv2.minAreaRect(approx)
+        # get the box points
+        # the points are in the format of (x, y)
+        # the order of the points is clockwise starting from the top-left corner
+        box = cv2.boxPoints(rect)
+        box = np.int32(box)
 
         return mask
 
@@ -128,15 +142,23 @@ class Combination(object):
         line_x_coord = int(line_x_coord / image.shape[1] * fg_mask.shape[1])
 
         resized_img, _ = resize_with_aspect_ratio(image, target_size=fg_mask.shape[:2])
-        fixed_mask = Combination.fix_mask(fg_mask, (line_x_coord, line_theta))
         left_mask, right_mask = Combination.split_mask(
-            fixed_mask, (line_x_coord, line_theta)
+            fg_mask, (line_x_coord, line_theta)
+        )
+        fixed_left_mask = Combination.fix_mask(left_mask)
+        fixed_right_mask = Combination.fix_mask(right_mask)
+
+        cropped_left_page, cropped_left_mask = Combination.drop_background(
+            resized_img, fixed_left_mask
+        )
+        cropped_right_page, cropped_right_mask = Combination.drop_background(
+            resized_img, fixed_right_mask
         )
 
-        left_page, left_mask = Combination.drop_background(resized_img, left_mask)
-        right_page, right_mask = Combination.drop_background(resized_img, right_mask)
+        left_page = {"image": cropped_left_page, "mask": cropped_left_mask}
+        right_page = {"image": cropped_right_page, "mask": cropped_right_mask}
 
-        return (left_page, left_mask), (right_page, right_mask)
+        return left_page, right_page
 
 
 if __name__ == "__main__":
@@ -147,6 +169,7 @@ if __name__ == "__main__":
     predict_fg = PredictForeground(args, new_size=(new_width, new_height))
     predict_sp = SplitPage(args, new_size=(new_width, new_height))
     split_pages = Combination(predict_fg, predict_sp)
+    fix_distortion = FixDistortion(target_size=(new_width, new_height))
 
     dir_names = [
         "B6855",
@@ -175,13 +198,25 @@ if __name__ == "__main__":
 
             left_page, right_page = split_pages(image, is_gray=False)
 
+            fixed_left_page = fix_distortion(left_page["image"], left_page["mask"])
+            fixed_right_page = fix_distortion(right_page["image"], right_page["mask"])
+
             cv2.namedWindow("Left Page", cv2.WINDOW_NORMAL)
             cv2.namedWindow("Right Page", cv2.WINDOW_NORMAL)
 
             cv2.resizeWindow("Left Page", new_width, new_height)
             cv2.resizeWindow("Right Page", new_width, new_height)
 
-            cv2.imshow("Left Page", left_page)
-            cv2.imshow("Right Page", right_page)
+            resized_left_page, _ = resize_with_aspect_ratio(
+                left_page["image"], target_size=(new_width, new_height)
+            )
+            resized_right_page, _ = resize_with_aspect_ratio(
+                right_page["image"], target_size=(new_width, new_height)
+            )
+
+            cv2.imshow("Left Page", cv2.hconcat([resized_left_page, fixed_left_page]))
+            cv2.imshow(
+                "Right Page", cv2.hconcat([resized_right_page, fixed_right_page])
+            )
             cv2.waitKey(0)
             cv2.destroyAllWindows()
