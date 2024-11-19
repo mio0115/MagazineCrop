@@ -113,3 +113,17 @@ def resize_with_aspect_ratio(
         resized_tgt[..., 0] = resized_tgt[..., 0] * new_width / width + left
 
     return padded_img, resized_tgt
+
+
+def reorder_coordinates(coords: np.ndarray):
+    # reorder the coordinates based on the following order:
+    # top-left, bottom-left, bottom-right, top-right
+    dist = coords.sum(1)
+    top_left = coords[np.argmin(dist)]
+    bottom_right = coords[np.argmax(dist)]
+
+    diff = np.diff(coords, 1)
+    top_right = coords[np.argmin(diff)]
+    bottom_left = coords[np.argmax(diff)]
+
+    return np.stack([top_left, bottom_left, bottom_right, top_right])
