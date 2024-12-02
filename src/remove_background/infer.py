@@ -7,7 +7,7 @@ import numpy as np
 
 from .model.model_unet_pp import build_model
 from ..utils.arg_parser import get_parser
-from ..utils.misc import resize_with_aspect_ratio
+from ..utils.misc import resize_with_aspect_ratio, timeit
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
@@ -28,8 +28,10 @@ class PredictForeground(object):
         )
         self._model.to(self._model_device)
 
+        self._no_resize: bool = args.no_resize
         self._new_size = new_size
 
+    @timeit
     @staticmethod
     def find_max_component(mask: np.ndarray) -> list[list[tuple[int]]]:
         visited = np.zeros_like(mask)
@@ -72,12 +74,12 @@ class PredictForeground(object):
 
         return new_mask
 
+    @timeit
     def __call__(self, image: np.ndarray, is_gray: bool = False) -> np.ndarray:
         if not is_gray:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        resized_image, _ = resize_with_aspect_ratio(image, target_size=self._new_size)
 
-        eh_image = cv2.equalizeHist(resized_image)
+        eh_image = cv2.equalizeHist(image)
 
         with torch.no_grad():
             in_image = (
