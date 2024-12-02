@@ -1,4 +1,5 @@
-from typing import Optional
+from typing import Optional, Callable
+import time
 
 import torch
 import numpy as np
@@ -76,9 +77,10 @@ def resize_with_aspect_ratio(
     """
     This function is to resize images with given aspect ratio
     instead of directly resizing to target_size which cause distorted.
+    Note that the order of the target_size is (width, height).
     """
     height, width = img.shape[:2]
-    target_height, target_width = target_size
+    target_width, target_height = target_size
 
     if height * width <= target_height * target_width:
         interpolation = cv2.INTER_CUBIC
@@ -86,12 +88,23 @@ def resize_with_aspect_ratio(
         interpolation = cv2.INTER_AREA
 
     aspect_ratio = width / height
-    if height > width:
-        new_height = target_height
-        new_width = int(new_height * aspect_ratio)
+    # case 1
+    new_height1 = target_height
+    new_width1 = int(target_height * aspect_ratio)
+    # case 2
+    new_width2 = target_width
+    new_height2 = int(target_width / aspect_ratio)
+    # note that either case 1 or case 2 would be valid
+    # valid conditions are that new_width <= target_width and new_height <= target_height
+    if new_width1 <= target_width and new_height2 <= target_height:
+        if new_height1 * new_width1 < new_height2 * new_width2:
+            new_width, new_height = new_width2, new_height2
+        else:
+            new_width, new_height = new_width1, new_height1
+    elif new_width1 <= target_width:
+        new_width, new_height = new_width1, new_height1
     else:
-        new_width = target_width
-        new_height = int(new_width / aspect_ratio)
+        new_width, new_height = new_width2, new_height2
 
     # resize the image
     resized_img = cv2.resize(img, (new_width, new_height), interpolation)
@@ -127,3 +140,14 @@ def reorder_coordinates(coords: np.ndarray):
     bottom_left = coords[np.argmax(diff)]
 
     return np.stack([top_left, top_right, bottom_right, bottom_left])
+
+
+def timeit(func: Callable):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print(f"Function {func.__name__} took {end - start} seconds")
+        return result
+
+    return wrapper
