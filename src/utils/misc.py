@@ -72,6 +72,7 @@ def lines_to_coord(lines, height: int, width: int):
 def resize_with_aspect_ratio(
     img: np.ndarray,
     tgt: Optional[np.ndarray] = None,
+    return_pad: bool = False,
     target_size: tuple[int] = (512, 512),
 ) -> tuple[np.ndarray, Optional[np.ndarray]]:
     """
@@ -125,6 +126,8 @@ def resize_with_aspect_ratio(
         resized_tgt = tgt.copy()
         resized_tgt[..., 0] = resized_tgt[..., 0] * new_width / width + left
 
+    if return_pad:
+        return padded_img, resized_tgt, (top, bottom, left, right)
     return padded_img, resized_tgt
 
 
@@ -151,3 +154,109 @@ def timeit(func: Callable):
         return result
 
     return wrapper
+
+
+def show_mask(mask, title, window_size=(600, 600)):
+    amplified_mask = (mask * 255).astype(np.uint8)
+
+    cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(title, *window_size)
+    cv2.imshow(title, amplified_mask)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def combine_images(images, padding_color=(128, 128, 128), font_color=(0, 0, 0)):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_thickness = 2
+    border_thickness = 10
+
+    shape = dict.fromkeys(images.keys())
+    for key in images.keys():
+        shape[key] = images[key].shape
+
+    if images["left"].shape[0] != images["right"].shape[0]:
+        padding_height = abs(images["left"].shape[0] - images["right"].shape[0])
+        if images["left"].shape[0] < images["right"].shape[0]:
+            images["left"] = cv2.copyMakeBorder(
+                images["left"],
+                0,
+                padding_height,
+                0,
+                0,
+                cv2.BORDER_CONSTANT,
+                value=padding_color,
+            )
+        else:
+            images["right"] = cv2.copyMakeBorder(
+                images["right"],
+                0,
+                padding_height,
+                0,
+                0,
+                cv2.BORDER_CONSTANT,
+                value=padding_color,
+            )
+    vert_red_line = np.zeros(
+        (images["left"].shape[0], border_thickness, 3), dtype=np.uint8
+    )
+    vert_red_line[:, :] = (0, 0, 255)
+    cv2.putText(
+        images["left"],
+        "LEFT",
+        (50, 50),
+        font,
+        font_scale,
+        font_color,
+        font_thickness,
+    )
+    cv2.putText(
+        images["right"],
+        "RIGHT",
+        (50, 50),
+        font,
+        font_scale,
+        font_color,
+        font_thickness,
+    )
+    bottom_image = cv2.hconcat([images["left"], vert_red_line, images["right"]])
+
+    if images["original"].shape[1] != bottom_image.shape[1]:
+        padding_width = abs(images["original"].shape[1] - bottom_image.shape[1])
+        if images["original"].shape[1] < bottom_image.shape[1]:
+            images["original"] = cv2.copyMakeBorder(
+                images["original"],
+                0,
+                0,
+                0,
+                padding_width,
+                cv2.BORDER_CONSTANT,
+                value=padding_color,
+            )
+        elif images["original"].shape[1] > bottom_image.shape[1]:
+            bottom_image = cv2.copyMakeBorder(
+                bottom_image,
+                0,
+                0,
+                0,
+                padding_width,
+                cv2.BORDER_CONSTANT,
+                value=padding_color,
+            )
+    hori_red_line = np.zeros(
+        (border_thickness, bottom_image.shape[1], 3), dtype=np.uint8
+    )
+    hori_red_line[:, :] = (0, 0, 255)
+    cv2.putText(
+        images["original"],
+        "ORIGINAL",
+        (50, 50),
+        font,
+        font_scale,
+        font_color,
+        font_thickness,
+    )
+    combined_image = cv2.vconcat([images["original"], hori_red_line, bottom_image])
+
+    return combined_image
