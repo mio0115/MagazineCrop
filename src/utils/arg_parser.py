@@ -94,4 +94,15 @@ def get_parser():
     parser.add_argument("--rm_bg_model_name", type=str, default="rm_bg_entire_iter.pth")
     parser.add_argument("--sp_pg_model_name", type=str, default="sp_pg_mod.pth")
 
+    parser.add_argument("--no_resize", action="store_true", dest="no_resize")
+    parser.add_argument("--show_origin", action="store_true", dest="show_origin")
+
+    parser.add_argument(
+        "--import_image_from", type=str, dest="import_image_from", default="None"
+    )
+    parser.add_argument("--show_output", action="store_true", dest="show_output")
+    parser.add_argument(
+        "--export_image_to", type=str, dest="export_image_to", default="None"
+    )
+
     return parser
