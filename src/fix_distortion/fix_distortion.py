@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from ..utils.misc import reorder_coordinates, resize_with_aspect_ratio
+from ..utils.misc import reorder_coordinates
 
 
 class CombinationGenerator(object):
@@ -41,13 +41,14 @@ class CombinationGenerator(object):
 
 
 class FixDistortion(object):
-    def __init__(self, target_size: tuple[int] = (1024, 1024)):
+    def __init__(self, args, target_size: tuple[int] = (1024, 1024)):
         self._target_size = target_size
+        self._no_resize = args.no_resize
 
     def perspectiveTransformApproach(self, img, mask):
         padded_img = np.pad(
             img, ((100, 100), (100, 100), (0, 0)), "constant", constant_values=0
-        )
+        ).astype(np.uint8)
         padded_mask = np.pad(
             mask, ((100, 100), (100, 100)), "constant", constant_values=0
         )
@@ -75,28 +76,28 @@ class FixDistortion(object):
         )
 
         rect = cv2.minAreaRect(hull["hull_points"])
-        box = cv2.boxPoints(rect).astype(np.float32)
-        # align the box with the x-axis
-        rot_angle = rect[-1] if rect[-1] < 45 else rect[-1] - 90
-        rot_mat = cv2.getRotationMatrix2D(rect[0], rot_angle, 1.0)
-        aligned_box = cv2.transform(box[None, :, :], rot_mat).squeeze()
-        # reorder the box coordinates
-        aligned_box = reorder_coordinates(aligned_box)
-        shifted_box = aligned_box - aligned_box[0]
+        # align the box with the x-axis AND the y-axis
+        # the upper-left corner is the origin
+        if rect[-1] < 45:
+            box_width, box_height = rect[1]
+        else:
+            box_height, box_width = rect[1]
+        aligned_box = np.array(
+            [
+                [0, 0],
+                [box_width, 0],
+                [box_width, box_height],
+                [0, box_height],
+            ],
+            dtype=np.float32,
+        )
 
-        rect_size = rect[1]
-        new_width = min(rect_size)
-        new_height = max(rect_size)
-        mat = cv2.getPerspectiveTransform(quad, shifted_box)
+        mat = cv2.getPerspectiveTransform(quad, aligned_box)
         dewarped = cv2.warpPerspective(
-            padded_img, mat, (int(new_width), int(new_height))
+            padded_img, mat, (int(box_width), int(box_height))
         )
 
-        resized_dewarped, _ = resize_with_aspect_ratio(
-            dewarped, target_size=self._target_size
-        )
-
-        return resized_dewarped
+        return dewarped
 
     @staticmethod
     def splitPolygon(mask: np.ndarray, polygon: np.ndarray):
@@ -129,7 +130,6 @@ class FixDistortion(object):
             if area_mask_rect > curr_choice["area"]:
                 curr_choice["pts"] = (pt1, pt2, pt3, pt4)
                 curr_choice["area"] = area_mask_rect
-
         # then, we sort the points to determine the 4 corners of the rectangle
         dist = np.take(np.sum(np.abs(polygon), axis=1), curr_choice["pts"], 0)
         diff = np.take(np.diff(np.abs(polygon), axis=1), curr_choice["pts"], 0)
@@ -141,22 +141,10 @@ class FixDistortion(object):
             "bottom-left": curr_choice["pts"][np.argmax(diff)],
             "bottom-right": curr_choice["pts"][np.argmax(dist)],
         }
-        # we sort the points in a clockwise order starting from the top-left corner
-        hull_indices = cv2.convexHull(
-            points=polygon, clockwise=True, returnPoints=False
-        ).tolist()
-        while hull_indices[0] != corner_indices["top-left"]:
-            hull_indices.append(hull_indices.pop(0))
-        # update the corner indices after shifting
-        updated_corner_indices = dict.fromkeys(corner_indices.keys())
-        for name in corner_indices.keys():
-            updated_corner_indices[name] = (
-                corner_indices[name] - corner_indices["top-left"]
-            ) % num_pts
 
         return {
-            "hull_points": np.take(polygon, hull_indices, 0),
-            "corners": updated_corner_indices,
+            "hull_points": polygon,
+            "corners": corner_indices,
         }, None
 
     @staticmethod
