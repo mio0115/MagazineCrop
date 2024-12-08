@@ -1,5 +1,6 @@
 from typing import Optional, Callable
 import time
+import math
 
 import torch
 import numpy as np
@@ -324,3 +325,14 @@ def combine_images_single_page(
     combined_image = cv2.vconcat([images["original"], hori_red_line, bottom_image])
 
     return combined_image
+
+
+def compute_resized_shape(shape: tuple[int], scale: float = 1.0):
+    height, width, _ = shape
+
+    area = height * width
+    resized_area = area * scale
+    new_height = int(math.sqrt(resized_area * height / width))
+    new_width = int(resized_area / new_height)
+
+    return (new_height, new_width)

@@ -91,24 +91,34 @@ def get_parser():
         help="path to the output directory",
     )
     parser.add_argument("--output_as", type=str, default="image.jpg", dest="output_as")
-    parser.add_argument("--rm_bg_model_name", type=str, default="rm_bg_entire_iter.pth")
-    parser.add_argument("--sp_pg_model_name", type=str, default="sp_pg_mod.pth")
+    parser.add_argument("--rm-bg-model-name", type=str, default="rm_bg_entire_iter.pth")
+    parser.add_argument("--sp-pg-model-name", type=str, default="sp_pg_mod.pth")
 
-    parser.add_argument("--no_resize", action="store_true", dest="no_resize")
-    parser.add_argument("--show_origin", action="store_true", dest="show_origin")
+    parser.add_argument("--no-resize", action="store_true", dest="no_resize")
 
     parser.add_argument(
-        "--import_image_from", type=str, dest="import_image_from", default="None"
-    )
-    parser.add_argument("--show_output", action="store_true", dest="show_output")
-    parser.add_argument(
-        "--save_steps_output", action="store_true", dest="save_steps_output"
-    )
-    parser.add_argument(
-        "--export_image_to", type=str, dest="export_image_to", default="None"
+        "-i",
+        "--input",
+        type=str,
+        required=True,
+        dest="input",
+        help="Path to the input image",
     )
     parser.add_argument(
-        "--num_pages", type=int, default=2, choices=[1, 2], dest="num_pages"
+        "-o",
+        "--output-dir",
+        type=str,
+        required=True,
+        dest="output_dir",
+        help="Path to the directory where output files will be saved",
+    )
+    parser.add_argument("--output-scale", type=float, default=1.0, dest="output_scale")
+    parser.add_argument("--compression-quality", type=int, default=95, dest="quality")
+    parser.add_argument(
+        "--save-steps-output", action="store_true", dest="save_steps_output"
+    )
+    parser.add_argument(
+        "--num-pages", type=int, default=2, choices=[1, 2], dest="num_pages"
     )
 
     return parser

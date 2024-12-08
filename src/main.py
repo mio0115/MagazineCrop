@@ -8,7 +8,7 @@ from PIL import Image
 from .remove_background.infer import PredictForeground
 from .split_page.splitting import SplitPage
 from .utils.arg_parser import get_parser
-from .utils.misc import resize_with_aspect_ratio
+from .utils.misc import resize_with_aspect_ratio, compute_resized_shape
 from .utils.save_output import save_line, save_mask
 from .fix_distortion.fix_distortion import FixDistortion
 
@@ -246,115 +246,60 @@ class Combination(object):
         return pages
 
 
-if __name__ == "__main__":
+def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    new_width, new_height = 1024, 1024
-    predict_fg = PredictForeground(args, new_size=(new_width, new_height))
-    predict_sp = SplitPage(args, new_size=(new_width, new_height))
+    # check if the input image exists
+    if not os.path.isdir(args.output_dir):
+        raise FileNotFoundError(f"{args.output_dir} does not exist")
+    # check if the output directory exists
+    try:
+        pil_image = Image.open(args.input)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"{args.input} does not exist")
+    except Exception as e:
+        raise e
+
+    # initialize the pipeline
+    new_shape = (1024, 1024)  # width, height
+    predict_fg = PredictForeground(args, new_size=new_shape)
+    predict_sp = SplitPage(args, new_size=new_shape)
     split_pages = Combination(args, predict_fg, predict_sp)
-    fix_distortion = FixDistortion(args, target_size=(new_width, new_height))
+    fix_distortion = FixDistortion(args, target_size=new_shape)
 
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 1
-    font_thickness = 2
-    font_color = (0, 255, 0)
+    # convert the image to numpy array and change the channel order
+    image = np.array(pil_image, dtype=np.uint8)[..., ::-1]
+    # split the image into pages and fix the distortion
+    try:
+        pages = split_pages(image, is_gray=False)
 
-    dir_names = [
-        "B6855",
-        "B6960",
-        "B6995",
-        "C2789",
-        "C2797",
-        "C2811",
-        "C2926",
-        "C3909",
-        "C3920",
-    ]
+        fixed_pages = []
+        for page in pages:
+            fixed_pages.append(fix_distortion(page["image"], page["mask"]))
+    except Exception as e:
+        raise e
 
-    single_pages = [
-        "no7-1009_105331.tif",
-        "no7-1009_105616.tif",
-        "no7-1008_135617.tif",
-        "no7-1008_143236.tif",
-        "no7-1007_151540.tif",
-        "no7-1007_153209.tif",
-        "no6-1009_173556.tif",
-        "no6-1009_173948.tif",
-        "no6-1011_092006.tif",
-        "no6-1011_092220.tif",
-        "no6-1011_095239.tif",
-        "no6-1011_100319.tif",
-        "no7-1004_165405.tif",
-    ]
+    # scale the output images
+    scaled_pages = []
+    for page in fixed_pages:
+        (new_height, new_width) = compute_resized_shape(
+            shape=page.shape, scale=args.output_scale
+        )
+        scaled_pages.append(
+            cv2.resize(page, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        )
 
-    for dir_type in ["train_data", "valid_data"]:
-        for dir_name in dir_names:
-            path_to_dir = os.path.join(
-                os.getcwd(), "data", dir_type, "scanned", "images", dir_name
-            )
-            path_to_save = os.path.join(
-                os.getcwd(), "data", "processed_wo_resize", dir_name
-            )
-            if not os.path.isdir(path_to_dir):
-                continue
+    # save the output images
+    image_name = os.path.basename(args.input).split(".")[0]
+    for i, page in enumerate(scaled_pages):
+        Image.fromarray(page[..., ::-1]).save(
+            os.path.join(args.output_dir, f"{image_name}_{i}.tif"),
+            format="TIFF",
+            compression="jpeg",
+            quality=args.quality,
+        )
 
-            for image_name in os.listdir(path_to_dir):
-                if not image_name.endswith(".tif"):
-                    continue
-                if args.num_pages == 1 and image_name not in single_pages:
-                    continue
 
-                starting_time = time.time()
-                base_name = image_name.split(".")[0]
-                print(os.path.join(path_to_dir, image_name))
-
-                pil_image = Image.open(os.path.join(path_to_dir, image_name))
-                # convert the image to numpy array and change the channel order
-                # from RGB to BGR
-                image = np.array(pil_image, dtype=np.uint8)[..., ::-1]
-
-                try:
-                    pages = split_pages(image, is_gray=False)
-                    fixed_pages = []
-
-                    for page in pages:
-                        fixed_pages.append(fix_distortion(page["image"], page["mask"]))
-
-                except Exception as e:
-                    print("-" * 100)
-                    print(os.path.join(path_to_dir, image_name))
-                    print(f"ERROR: {e}")
-                    print("-" * 100)
-                    continue
-
-                if not os.path.isdir(os.path.join(path_to_save, base_name)):
-                    os.makedirs(os.path.join(path_to_save, base_name))
-
-                pil_image.save(
-                    os.path.join(path_to_save, base_name, "original.tif"),
-                    format="TIFF",
-                    compression="jpeg",
-                )
-                if args.num_pages == 2:
-                    Image.fromarray(fixed_pages[0][..., ::-1]).save(
-                        os.path.join(path_to_save, base_name, "left.tif"),
-                        format="TIFF",
-                        compression="jpeg",
-                    )
-                    Image.fromarray(fixed_pages[1][..., ::-1]).save(
-                        os.path.join(path_to_save, base_name, "right.tif"),
-                        format="TIFF",
-                        compression="jpeg",
-                    )
-                else:
-                    # only 1 page
-                    Image.fromarray(fixed_pages[0][..., ::-1]).save(
-                        os.path.join(path_to_save, base_name, "page.tif"),
-                        format="TIFF",
-                        compression="jpeg",
-                    )
-
-                end_time = time.time()
-                print(f"TIME CONSUMED: {end_time-starting_time}")
+if __name__ == "__main__":
+    main()
