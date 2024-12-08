@@ -94,8 +94,6 @@ def get_parser():
     parser.add_argument("--rm-bg-model-name", type=str, default="rm_bg_entire_iter.pth")
     parser.add_argument("--sp-pg-model-name", type=str, default="sp_pg_mod.pth")
 
-    parser.add_argument("--no-resize", action="store_true", dest="no_resize")
-
     parser.add_argument(
         "-i",
         "--input",

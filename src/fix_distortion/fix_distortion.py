@@ -43,7 +43,6 @@ class CombinationGenerator(object):
 class FixDistortion(object):
     def __init__(self, args, target_size: tuple[int] = (1024, 1024)):
         self._target_size = target_size
-        self._no_resize = args.no_resize
 
     def perspectiveTransformApproach(self, img, mask):
         padded_img = np.pad(

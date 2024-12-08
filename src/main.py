@@ -219,26 +219,21 @@ class Combination(object):
         #     save_mask(resized_img, fixed_left_mask, name="fixed_left_mask")
         #     save_mask(resized_img, fixed_right_mask, name="fixed_right_mask")
         # resize the mask back to the original size
-        if self.args.no_resize:
-            masks = self.mask_recovery(
-                fixed_masks,
-                padding=padding,
-            )
-        else:
-            masks = fixed_masks
+        masks = self.mask_recovery(
+            fixed_masks,
+            padding=padding,
+        )
 
         # drop the background from the image
-        pages = Combination.drop_background(
-            image if self.args.no_resize else resized_img, masks
-        )
+        pages = Combination.drop_background(image, masks)
         # if self.args.save_steps_output:
         #     save_mask(
-        #         image if self.args.no_resize else resized_img,
+        #         image,
         #         cropped_left_mask,
         #         name="cropped_left_mask",
         #     )
         #     save_mask(
-        #         image if self.args.no_resize else resized_img,
+        #         image,
         #         cropped_right_mask,
         #         name="cropped_right_mask",
         #     )

@@ -28,7 +28,6 @@ class PredictForeground(object):
         )
         self._model.to(self._model_device)
 
-        self._no_resize: bool = args.no_resize
         self._new_size = new_size
 
     @timeit
