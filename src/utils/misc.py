@@ -260,3 +260,67 @@ def combine_images(images, padding_color=(128, 128, 128), font_color=(0, 0, 0)):
     combined_image = cv2.vconcat([images["original"], hori_red_line, bottom_image])
 
     return combined_image
+
+
+def combine_images_single_page(
+    images, padding_color=(128, 128, 128), font_color=(0, 0, 0)
+):
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_thickness = 2
+    border_thickness = 10
+
+    shape = dict.fromkeys(images.keys())
+    for key in images.keys():
+        shape[key] = images[key].shape
+
+    cv2.putText(
+        images["page"],
+        "PAGE",
+        (50, 50),
+        font,
+        font_scale,
+        font_color,
+        font_thickness,
+    )
+
+    bottom_image = images["page"]
+
+    if images["original"].shape[1] != bottom_image.shape[1]:
+        padding_width = abs(images["original"].shape[1] - bottom_image.shape[1])
+        if images["original"].shape[1] < bottom_image.shape[1]:
+            images["original"] = cv2.copyMakeBorder(
+                images["original"],
+                0,
+                0,
+                0,
+                padding_width,
+                cv2.BORDER_CONSTANT,
+                value=padding_color,
+            )
+        elif images["original"].shape[1] > bottom_image.shape[1]:
+            bottom_image = cv2.copyMakeBorder(
+                bottom_image,
+                0,
+                0,
+                0,
+                padding_width,
+                cv2.BORDER_CONSTANT,
+                value=padding_color,
+            )
+    hori_red_line = np.zeros(
+        (border_thickness, bottom_image.shape[1], 3), dtype=np.uint8
+    )
+    hori_red_line[:, :] = (0, 0, 255)
+    cv2.putText(
+        images["original"],
+        "ORIGINAL",
+        (50, 50),
+        font,
+        font_scale,
+        font_color,
+        font_thickness,
+    )
+    combined_image = cv2.vconcat([images["original"], hori_red_line, bottom_image])
+
+    return combined_image

@@ -102,7 +102,13 @@ def get_parser():
     )
     parser.add_argument("--show_output", action="store_true", dest="show_output")
     parser.add_argument(
+        "--save_steps_output", action="store_true", dest="save_steps_output"
+    )
+    parser.add_argument(
         "--export_image_to", type=str, dest="export_image_to", default="None"
+    )
+    parser.add_argument(
+        "--num_pages", type=int, default=2, choices=[1, 2], dest="num_pages"
     )
 
     return parser

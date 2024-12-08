@@ -3,38 +3,46 @@ import time
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from .remove_background.infer import PredictForeground
 from .split_page.splitting import SplitPage
 from .utils.arg_parser import get_parser
-from .utils.misc import resize_with_aspect_ratio, show_mask, combine_images
+from .utils.misc import resize_with_aspect_ratio
+from .utils.save_output import save_line, save_mask
 from .fix_distortion.fix_distortion import FixDistortion
 
 
 class Combination(object):
     def __init__(self, args, predict_foreground, predict_split_coord):
+        self.args = args
+
         self._predict_fg = predict_foreground
         self._predict_sp = predict_split_coord
-        self._no_resize = args.no_resize
+
         self._original_shape = None
 
     @staticmethod
-    def fix_mask(mask: np.ndarray, thresh: float = 0.9) -> np.ndarray:
-        amplified_mask = (mask.copy() * 255).astype(np.uint8)
+    def fix_mask(masks: list[np.ndarray], thresh: float = 0.9) -> np.ndarray:
+        fixed_masks = []
+        for mask in masks:
+            amplified_mask = (mask.copy() * 255).astype(np.uint8)
 
-        # find the largest contour in the mask
-        # note that there is only one component in the mask
-        contours, _ = cv2.findContours(
-            amplified_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        largest_contour = max(contours, key=cv2.contourArea)
+            # find the largest contour in the mask
+            # note that there is only one component in the mask
+            contours, _ = cv2.findContours(
+                amplified_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            largest_contour = max(contours, key=cv2.contourArea)
 
-        # approximate the largest contour with a polygon
-        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
-        approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+            # approximate the largest contour with a polygon
+            epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+            approx = cv2.approxPolyDP(largest_contour, epsilon, True)
 
-        fixed_mask = cv2.fillPoly(mask.astype(np.uint8), [approx], 1)
-        return fixed_mask
+            fixed_mask = cv2.fillPoly(mask.astype(np.uint8), [approx], 1)
+            fixed_masks.append(fixed_mask)
+
+        return fixed_masks
 
     @staticmethod
     def compute_line_length(mask, dividing_line):
@@ -110,60 +118,72 @@ class Combination(object):
 
         return left_mask, right_mask
 
-    def mask_recovery(self, mask: np.ndarray, padding: tuple[int]):
+    def mask_recovery(self, masks: list[np.ndarray], padding: tuple[int]):
         top, bottom, left, right = padding
-        # drop the padding
-        no_pad_mask = (
-            mask[
-                top : (-bottom if bottom > 0 else None),
-                left : (-right if right > 0 else None),
-            ]
-            * 255
-        ).astype(np.uint8)
-        # add additional padding to make the border away from edges
-        padding_mask = np.pad(
-            no_pad_mask, ((100, 100), (100, 100)), "constant", constant_values=0
-        )
+        recovered_masks = []
 
-        # find the largest contour in the mask
-        contours, _ = cv2.findContours(
-            padding_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        largest_contour = max(contours, key=cv2.contourArea)
-        # approximate the largest contour with a polygon
-        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
-        approx = cv2.approxPolyDP(largest_contour, epsilon, True).reshape(-1, 2)
+        for mask in masks:
+            # drop the padding
+            no_pad_mask = (
+                mask[
+                    top : (-bottom if bottom > 0 else None),
+                    left : (-right if right > 0 else None),
+                ]
+                * 255
+            ).astype(np.uint8)
+            # add additional padding to make the border away from edges
+            padding_mask = np.pad(
+                no_pad_mask, ((100, 100), (100, 100)), "constant", constant_values=0
+            )
 
-        # convert the coordinates back to the original size
-        no_pad_coords = approx - 100
-        scale_x = self._original_shape[1] / no_pad_mask.shape[1]
-        scale_y = self._original_shape[0] / no_pad_mask.shape[0]
-        original_coords = (no_pad_coords * [scale_x, scale_y]).astype(np.int32)
-        # get the mask in the original size
-        new_mask = np.zeros(shape=self._original_shape[:2], dtype=np.int32)
-        original_mask = cv2.fillPoly(new_mask, [original_coords], 1)
+            # find the largest contour in the mask
+            contours, _ = cv2.findContours(
+                padding_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            largest_contour = max(contours, key=cv2.contourArea)
+            # approximate the largest contour with a polygon
+            epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+            approx = cv2.approxPolyDP(largest_contour, epsilon, True).reshape(-1, 2)
 
-        return original_mask
+            # convert the coordinates back to the original size
+            no_pad_coords = approx - 100
+            scale_x = self._original_shape[1] / no_pad_mask.shape[1]
+            scale_y = self._original_shape[0] / no_pad_mask.shape[0]
+            original_coords = (no_pad_coords * [scale_x, scale_y]).astype(np.int32)
+            # get the mask in the original size
+            new_mask = np.zeros(shape=self._original_shape[:2], dtype=np.int32)
+            original_mask = cv2.fillPoly(new_mask, [original_coords], 1)
+
+            recovered_masks.append(original_mask)
+
+        return recovered_masks
 
     @staticmethod
-    def drop_background(image, mask):
-        # we need to drop the background from the image based on the mask
-        for top in range(mask.shape[0]):
-            if np.any(mask[top]):
-                break
-        for bottom in range(mask.shape[0] - 1, -1, -1):
-            if np.any(mask[bottom]):
-                break
-        for left in range(mask.shape[1]):
-            if np.any(mask[:, left]):
-                break
-        for right in range(mask.shape[1] - 1, -1, -1):
-            if np.any(mask[:, right]):
-                break
+    def drop_background(image, masks: list[np.ndarray]):
+        pages = []
+        for mask in masks:
+            # we need to drop the background from the image based on the mask
+            for top in range(mask.shape[0]):
+                if np.any(mask[top]):
+                    break
+            for bottom in range(mask.shape[0] - 1, -1, -1):
+                if np.any(mask[bottom]):
+                    break
+            for left in range(mask.shape[1]):
+                if np.any(mask[:, left]):
+                    break
+            for right in range(mask.shape[1] - 1, -1, -1):
+                if np.any(mask[:, right]):
+                    break
 
-        cropped_image = image[top:bottom, left:right, :]
-        cropped_mask = mask[top:bottom, left:right]
-        return cropped_image * cropped_mask[:, :, None], cropped_mask
+            pages.append(
+                {
+                    "image": image[top:bottom, left:right, :],
+                    "mask": mask[top:bottom, left:right],
+                }
+            )
+
+        return pages
 
     def __call__(self, image: np.ndarray, is_gray: bool = False):
         self._original_shape = image.shape
@@ -172,51 +192,58 @@ class Combination(object):
             image, target_size=self._predict_fg._new_size, return_pad=True
         )
 
+        # get the foreground mask
         fg_mask = self._predict_fg(resized_img, is_gray=is_gray)
-        (line_x_coord, line_theta) = self._predict_sp(image)
-        line_x_coord = int(line_x_coord / image.shape[1] * fg_mask.shape[1])
+        if self.args.num_pages == 2:
+            # get the dividing line
+            (line_x_coord, line_theta) = self._predict_sp(image)
+            # convert the x-coordinate to the resized image
+            line_x_coord = int(line_x_coord / image.shape[1] * fg_mask.shape[1])
+            if self.args.save_steps_output:
+                save_mask(resized_img, fg_mask, name="foreground_mask")
+                save_line(resized_img, (line_x_coord, line_theta), name="dividing_line")
 
-        # split the mask into two parts based on the dividing line
-        resized_left_mask, resized_right_mask = Combination.split_mask(
-            fg_mask, (line_x_coord, line_theta)
-        )
+            # split the mask into two parts based on the dividing line
+            resized_left_mask, resized_right_mask = Combination.split_mask(
+                fg_mask, (line_x_coord, line_theta)
+            )
+            resized_masks = [resized_left_mask, resized_right_mask]
+        else:
+            resized_masks = [fg_mask]
         # fix the mask by either filling the holes or removing the edges
         # currently, we only fill the holes
         # TODO: find better approach to fix the mask
-        fixed_left_mask = Combination.fix_mask(resized_left_mask)
-        fixed_right_mask = Combination.fix_mask(resized_right_mask)
-        # show_mask(
-        #     fixed_left_mask, title="fixed_left_mask", window_size=image.shape[:2][::-1]
-        # )
-        # show_mask(
-        #     fixed_right_mask,
-        #     title="fixed_right_mask",
-        #     window_size=image.shape[:2][::-1],
-        # )
+        fixed_masks = Combination.fix_mask(resized_masks)
+
+        # if self.args.save_steps_output:
+        #     save_mask(resized_img, fixed_left_mask, name="fixed_left_mask")
+        #     save_mask(resized_img, fixed_right_mask, name="fixed_right_mask")
         # resize the mask back to the original size
-        if self._no_resize:
-            left_mask = self.mask_recovery(
-                fixed_left_mask,
+        if self.args.no_resize:
+            masks = self.mask_recovery(
+                fixed_masks,
                 padding=padding,
             )
-            # show_mask(left_mask, title="left_mask", window_size=image.shape[:2][::-1])
-            right_mask = self.mask_recovery(fixed_right_mask, padding=padding)
-            # show_mask(right_mask, title="right_mask", window_size=image.shape[:2][::-1])
         else:
-            left_mask = fixed_left_mask
-            right_mask = fixed_right_mask
+            masks = fixed_masks
+
         # drop the background from the image
-        cropped_left_page, cropped_left_mask = Combination.drop_background(
-            image if self._no_resize else resized_img, left_mask
+        pages = Combination.drop_background(
+            image if self.args.no_resize else resized_img, masks
         )
-        cropped_right_page, cropped_right_mask = Combination.drop_background(
-            image if self._no_resize else resized_img, right_mask
-        )
+        # if self.args.save_steps_output:
+        #     save_mask(
+        #         image if self.args.no_resize else resized_img,
+        #         cropped_left_mask,
+        #         name="cropped_left_mask",
+        #     )
+        #     save_mask(
+        #         image if self.args.no_resize else resized_img,
+        #         cropped_right_mask,
+        #         name="cropped_right_mask",
+        #     )
 
-        left_page = {"image": cropped_left_page, "mask": cropped_left_mask}
-        right_page = {"image": cropped_right_page, "mask": cropped_right_mask}
-
-        return left_page, right_page
+        return pages
 
 
 if __name__ == "__main__":
@@ -246,61 +273,88 @@ if __name__ == "__main__":
         "C3920",
     ]
 
-    for dir_name in dir_names:
-        path_to_dir = os.path.join(os.getcwd(), "data", "processed_wo_resize", dir_name)
-        path_to_save = os.path.join(os.getcwd(), "data", "combination", dir_name)
-        if not os.path.isdir(path_to_dir):
-            continue
+    single_pages = [
+        "no7-1009_105331.tif",
+        "no7-1009_105616.tif",
+        "no7-1008_135617.tif",
+        "no7-1008_143236.tif",
+        "no7-1007_151540.tif",
+        "no7-1007_153209.tif",
+        "no6-1009_173556.tif",
+        "no6-1009_173948.tif",
+        "no6-1011_092006.tif",
+        "no6-1011_092220.tif",
+        "no6-1011_095239.tif",
+        "no6-1011_100319.tif",
+        "no7-1004_165405.tif",
+    ]
 
-        for image_name in os.listdir(path_to_dir):
-            if not image_name.endswith(".tif"):
+    for dir_type in ["train_data", "valid_data"]:
+        for dir_name in dir_names:
+            path_to_dir = os.path.join(
+                os.getcwd(), "data", dir_type, "scanned", "images", dir_name
+            )
+            path_to_save = os.path.join(
+                os.getcwd(), "data", "processed_wo_resize", dir_name
+            )
+            if not os.path.isdir(path_to_dir):
                 continue
-            starting_time = time.time()
-            path_to_image = os.path.join(path_to_dir, image_name.split(".")[0])
-            image = cv2.imread(os.path.join(path_to_dir, image_name))
 
-            try:
-                left_page, right_page = split_pages(image, is_gray=False)
+            for image_name in os.listdir(path_to_dir):
+                if not image_name.endswith(".tif"):
+                    continue
+                if args.num_pages == 1 and image_name not in single_pages:
+                    continue
 
-                # cv2.namedWindow("left", cv2.WINDOW_NORMAL)
-                # cv2.resizeWindow("left", 4096, 4096)
-                # cv2.namedWindow("right", cv2.WINDOW_NORMAL)
-                # cv2.resizeWindow("right", 4096, 4096)
-
-                # resized_left_page, _ = resize_with_aspect_ratio(
-                #     left_page["image"].copy().astype(np.uint8),
-                #     target_size=(4096, 4096),
-                # )
-                # resized_right_page, _ = resize_with_aspect_ratio(
-                #     right_page["image"].copy().astype(np.uint8),
-                #     target_size=(4096, 4096),
-                # )
-                # cv2.imshow("left", resized_left_page)
-                # cv2.imshow("right", resized_right_page)
-                # cv2.waitKey(0)
-                # cv2.destroyAllWindows()
-
-                fixed_left_page = fix_distortion(left_page["image"], left_page["mask"])
-                fixed_right_page = fix_distortion(
-                    right_page["image"], right_page["mask"]
-                )
-            except Exception as e:
-                print("-" * 50)
+                starting_time = time.time()
+                base_name = image_name.split(".")[0]
                 print(os.path.join(path_to_dir, image_name))
-                print(f"ERROR: {e}")
-                print("-" * 50)
-                continue
 
-            # output_image = combine_images(
-            #     {"original": image, "left": fixed_left_page, "right": fixed_right_page}
-            # )
+                pil_image = Image.open(os.path.join(path_to_dir, image_name))
+                # convert the image to numpy array and change the channel order
+                # from RGB to BGR
+                image = np.array(pil_image, dtype=np.uint8)[..., ::-1]
 
-            path_to_save_im = os.path.join(path_to_save, image_name.split(".")[0])
-            if not os.path.isdir(path_to_save_im):
-                os.makedirs(path_to_save_im)
-            cv2.imwrite(os.path.join(path_to_save_im, "original.png"), image)
-            cv2.imwrite(os.path.join(path_to_save_im, "left.png"), fixed_left_page)
-            cv2.imwrite(os.path.join(path_to_save_im, "right.png"), fixed_right_page)
+                try:
+                    pages = split_pages(image, is_gray=False)
+                    fixed_pages = []
 
-            end_time = time.time()
-            print(f"TIME CONSUMED: {end_time-starting_time}")
+                    for page in pages:
+                        fixed_pages.append(fix_distortion(page["image"], page["mask"]))
+
+                except Exception as e:
+                    print("-" * 100)
+                    print(os.path.join(path_to_dir, image_name))
+                    print(f"ERROR: {e}")
+                    print("-" * 100)
+                    continue
+
+                if not os.path.isdir(os.path.join(path_to_save, base_name)):
+                    os.makedirs(os.path.join(path_to_save, base_name))
+
+                pil_image.save(
+                    os.path.join(path_to_save, base_name, "original.tif"),
+                    format="TIFF",
+                    compression="jpeg",
+                )
+                if args.num_pages == 2:
+                    Image.fromarray(fixed_pages[0][..., ::-1]).save(
+                        os.path.join(path_to_save, base_name, "left.tif"),
+                        format="TIFF",
+                        compression="jpeg",
+                    )
+                    Image.fromarray(fixed_pages[1][..., ::-1]).save(
+                        os.path.join(path_to_save, base_name, "right.tif"),
+                        format="TIFF",
+                        compression="jpeg",
+                    )
+                else:
+                    # only 1 page
+                    Image.fromarray(fixed_pages[0][..., ::-1]).save(
+                        os.path.join(path_to_save, base_name, "page.tif"),
+                        format="TIFF",
+                        compression="jpeg",
+                    )
+
+                end_time = time.time()
+                print(f"TIME CONSUMED: {end_time-starting_time}")
