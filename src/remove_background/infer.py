@@ -15,22 +15,37 @@ from ..utils.misc import resize_with_aspect_ratio, timeit
 
 class PredictForeground(object):
     def __init__(self, args, new_size: tuple[int] = (1024, 1024)):
-        self._model_device = args.device
-        self._model = torch.load(
-            os.path.join(
-                os.getcwd(),
-                "src",
-                "remove_background",
-                "checkpoints",
-                args.rm_bg_model_name,
-            ),
-            weights_only=False,
-        )
+        if hasattr(args, "device"):
+            self._model_device = args.device
+        elif hasattr(args, "use_gpu"):
+            self._model_device = "cuda" if args.use_gpu else "cpu"
+
+        if hasattr(args, "model_name"):
+            self._model = torch.load(
+                os.path.join(
+                    os.getcwd(),
+                    "src",
+                    "remove_background",
+                    "checkpoints",
+                    args.rm_bg_model_name,
+                ),
+                weights_only=False,
+            )
+        else:
+            self._model = torch.load(
+                os.path.join(
+                    os.getcwd(),
+                    "src",
+                    "remove_background",
+                    "checkpoints",
+                    "rm_bg_entire_iter.pth",
+                ),
+                weights_only=False,
+            )
         self._model.to(self._model_device)
 
         self._new_size = new_size
 
-    @timeit
     @staticmethod
     def find_max_component(mask: np.ndarray) -> list[list[tuple[int]]]:
         visited = np.zeros_like(mask)
@@ -73,7 +88,6 @@ class PredictForeground(object):
 
         return new_mask
 
-    @timeit
     def __call__(self, image: np.ndarray, is_gray: bool = False) -> np.ndarray:
         if not is_gray:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

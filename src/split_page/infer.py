@@ -16,13 +16,31 @@ from ..utils.misc import resize_with_aspect_ratio
 
 class PredictSplitCoord(object):
     def __init__(self, args, new_size: tuple[int] = (1024, 1024)):
-        self._model_device = args.device
-        self._model = torch.load(
-            os.path.join(
-                os.getcwd(), "src", "split_page", "checkpoints", args.sp_pg_model_name
-            ),
-            weights_only=False,
-        )
+        if hasattr(args, "device"):
+            self._model_device = args.device
+        elif hasattr(args, "use_gpu"):
+            self._model_device = "cuda" if args.use_gpu else "cpu"
+        else:
+            print("Use either get_parser('user') or get_parser('dev')")
+
+        if hasattr(args, "sp_pg_model_name"):
+            self._model = torch.load(
+                os.path.join(
+                    os.getcwd(),
+                    "src",
+                    "split_page",
+                    "checkpoints",
+                    args.sp_pg_model_name,
+                ),
+                weights_only=False,
+            )
+        else:
+            self._model = torch.load(
+                os.path.join(
+                    os.getcwd(), "src", "split_page", "checkpoints", "sp_pg_mod.pth"
+                ),
+                weights_only=False,
+            )
         self._model.to(self._model_device)
 
         self._new_size = new_size
