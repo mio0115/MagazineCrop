@@ -10,7 +10,7 @@ from .misc import combine_images, combine_images_single_page
 
 
 if __name__ == "__main__":
-    parser = get_parser()
+    parser = get_parser("dev")
     args = parser.parse_args()
 
     dir_names = [
@@ -24,6 +24,7 @@ if __name__ == "__main__":
         "C3909",
         "C3920",
     ]
+    addtional_dir_names = ["free_talk_03", "free_talk_04"]
 
     single_pages = [
         "no7-1009_105331",
@@ -41,7 +42,7 @@ if __name__ == "__main__":
         "no7-1004_165405",
     ]
 
-    for dir_name in dir_names:
+    for dir_name in addtional_dir_names:
         path_to_dir = os.path.join(os.getcwd(), "data", "processed_wo_resize", dir_name)
         path_to_save = os.path.join(os.getcwd(), "data", "combination", f"{dir_name}")
         if not os.path.isdir(path_to_dir):
@@ -62,11 +63,13 @@ if __name__ == "__main__":
             # right = cv2.imread(os.path.join(path_to_dir, base_name, "right.png"))
             if args.num_pages == 2:
                 pil_original = Image.open(
-                    os.path.join(path_to_dir, base_name, "original.tif")
+                    os.path.join(path_to_dir, base_name, f"{base_name}.tif")
                 )
-                pil_left = Image.open(os.path.join(path_to_dir, base_name, "left.tif"))
+                pil_left = Image.open(
+                    os.path.join(path_to_dir, base_name, f"{base_name}_0.tif")
+                )
                 pil_right = Image.open(
-                    os.path.join(path_to_dir, base_name, "right.tif")
+                    os.path.join(path_to_dir, base_name, f"{base_name}_1.tif")
                 )
 
                 original = np.array(pil_original, dtype=np.uint8)[..., ::-1]
