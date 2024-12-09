@@ -61,14 +61,14 @@ docker run --rm -it \
         --shm-size=${SHARED_MEM_SIZE} \
         ${IMAGE_NAME}:${IMAGE_TAG} \
         python -m src.split_page.train \
-            --learning_rate=${LEARNING_RATE} \
-            --lr_backbone=${LEARNING_RATE_BACKBONE} \
-            --augment_factor=${AUGMENT_FACTOR} \
+            --learning-rate=${LEARNING_RATE} \
+            --lr-backbone=${LEARNING_RATE_BACKBONE} \
+            --augment-factor=${AUGMENT_FACTOR} \
             --epochs=${EPOCHS} \
-            --batch_size=${BATCH_SIZE} \
+            --batch-size=${BATCH_SIZE} \
             --device=${DEVICE} \
-            --save_as=${SAVE_AS} \
-            --resume_from=${RESUME_FROM} \
+            --save-as=${SAVE_AS} \
+            --resume-from=${RESUME_FROM} \
             ${TRAIN} \
             ${RESUME} \
 
