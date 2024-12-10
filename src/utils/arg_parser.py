@@ -54,6 +54,14 @@ def user_parser():
         dest="single_page",
         help="Input image has only one page",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        dest="verbose",
+        help="Set verbosity level",
+    )
 
     return parser
 
@@ -152,7 +160,7 @@ def dev_parser():
     parser.add_argument("--sp-pg-model-name", type=str, default="sp_pg_mod.pth")
 
     parser.add_argument(
-        "--save-steps-output", action="store_true", dest="save_steps_output"
+        "-v", "--verbose", action="count", default=0, dest="Set verbosity level"
     )
     parser.add_argument(
         "--num-pages", type=int, default=2, choices=[1, 2], dest="num_pages"

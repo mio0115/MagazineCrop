@@ -43,6 +43,11 @@ class PredictSplitCoord(object):
             )
         self._model.to(self._model_device)
 
+        if hasattr(args, "verbose"):
+            self._verbose = args.verbose
+        else:
+            self._verbose = 0
+
         self._new_size = new_size
 
     def __call__(self, image: np.ndarray) -> tuple[int]:

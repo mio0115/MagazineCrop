@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Callable, Optional
 
 import cv2
 import numpy as np
@@ -14,7 +15,13 @@ from .fix_distortion.fix_distortion import FixDistortion
 
 
 class Combination(object):
-    def __init__(self, args, predict_foreground, predict_split_coord):
+    def __init__(
+        self,
+        args,
+        predict_foreground,
+        predict_split_coord,
+        save_mask_fn: Optional[Callable] = None,
+    ):
         if hasattr(args, "num_pages"):
             self._num_pages = args.num_pages
         elif hasattr(args, "single_page"):
@@ -25,9 +32,14 @@ class Combination(object):
         else:
             self._save_steps_output = False
 
+        if hasattr(args, "verbose"):
+            self._verbose = args.verbose
+        else:
+            self._verbose = 0
+
         self._predict_fg = predict_foreground
         self._predict_sp = predict_split_coord
-
+        self._save_mask_fn = save_mask_fn
         self._original_shape = None
 
     @staticmethod
@@ -193,6 +205,11 @@ class Combination(object):
 
         return pages
 
+    def _save_masks(self, image: np.ndarray, masks: list[np.ndarray], name: str):
+        if self._verbose > 0:
+            for i, mask in enumerate(masks):
+                self._save_mask_fn(image, mask, name=f"{name}_{i}")
+
     def __call__(self, image: np.ndarray, is_gray: bool = False):
         self._original_shape = image.shape
 
@@ -202,14 +219,13 @@ class Combination(object):
 
         # get the foreground mask
         fg_mask = self._predict_fg(resized_img, is_gray=is_gray)
+        self._save_masks(resized_img, [fg_mask], "foreground_mask")
+
         if self._num_pages == 2:
             # get the dividing line
             (line_x_coord, line_theta) = self._predict_sp(image)
             # convert the x-coordinate to the resized image
             line_x_coord = int(line_x_coord / image.shape[1] * fg_mask.shape[1])
-            if self._save_steps_output:
-                save_mask(resized_img, fg_mask, name="foreground_mask")
-                save_line(resized_img, (line_x_coord, line_theta), name="dividing_line")
 
             # split the mask into two parts based on the dividing line
             resized_left_mask, resized_right_mask = Combination.split_mask(
@@ -218,91 +234,23 @@ class Combination(object):
             resized_masks = [resized_left_mask, resized_right_mask]
         else:
             resized_masks = [fg_mask]
+        self._save_masks(resized_img, resized_masks, "splitted_mask")
         # fix the mask by either filling the holes or removing the edges
         # currently, we only fill the holes
         # TODO: find better approach to fix the mask
         fixed_masks = Combination.fix_mask(resized_masks)
+        self._save_masks(resized_img, fixed_masks, "filled_mask")
 
-        # if self._save_steps_output:
-        #     save_mask(resized_img, fixed_left_mask, name="fixed_left_mask")
-        #     save_mask(resized_img, fixed_right_mask, name="fixed_right_mask")
         # resize the mask back to the original size
         masks = self.mask_recovery(
             fixed_masks,
             padding=padding,
         )
+        self._save_masks(image, masks, "recovered_mask")
 
         # drop the background from the image
         pages = Combination.drop_background(image, masks)
-        # if self._save_steps_output:
-        #     save_mask(
-        #         image,
-        #         cropped_left_mask,
-        #         name="cropped_left_mask",
-        #     )
-        #     save_mask(
-        #         image,
-        #         cropped_right_mask,
-        #         name="cropped_right_mask",
-        #     )
+        for page in pages:
+            self._save_masks(page["image"], [page["mask"]], name="page_mask")
 
         return pages
-
-
-def main():
-    parser = get_parser()
-    args = parser.parse_args()
-
-    # check if the input image exists
-    if not os.path.isdir(args.output_dir):
-        raise FileNotFoundError(f"{args.output_dir} does not exist")
-    # check if the output directory exists
-    try:
-        pil_image = Image.open(args.input)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"{args.input} does not exist")
-    except Exception as e:
-        raise e
-
-    # initialize the pipeline
-    new_shape = (1024, 1024)  # width, height
-    predict_fg = PredictForeground(args, new_size=new_shape)
-    predict_sp = SplitPage(args, new_size=new_shape)
-    split_pages = Combination(args, predict_fg, predict_sp)
-    fix_distortion = FixDistortion(args, target_size=new_shape)
-
-    # convert the image to numpy array and change the channel order
-    image = np.array(pil_image, dtype=np.uint8)[..., ::-1]
-    # split the image into pages and fix the distortion
-    try:
-        pages = split_pages(image, is_gray=False)
-
-        fixed_pages = []
-        for page in pages:
-            fixed_pages.append(fix_distortion(page["image"], page["mask"]))
-    except Exception as e:
-        raise e
-
-    # scale the output images
-    scaled_pages = []
-    for page in fixed_pages:
-        (new_height, new_width) = compute_resized_shape(
-            shape=page.shape, scale=args.output_scale
-        )
-        scaled_pages.append(
-            cv2.resize(page, (new_width, new_height), interpolation=cv2.INTER_AREA)
-        )
-
-    # save the output images
-    image_name = os.path.basename(args.input).split(".")[0]
-    for i, page in enumerate(scaled_pages):
-        Image.fromarray(page[..., ::-1]).save(
-            os.path.join(args.output_dir, f"{image_name}_{i}.tif"),
-            format="TIFF",
-            compression="jpeg",
-            quality=args.quality,
-        )
-
-
-if __name__ == "__main__":
-    main()

@@ -1,5 +1,6 @@
 import os
 import time
+from functools import partial
 
 import cv2
 import numpy as np
@@ -7,10 +8,11 @@ from PIL import Image
 
 from .remove_background.infer import PredictForeground
 from .split_page.splitting import SplitPage
-from .utils.arg_parser import get_parser
-from .utils.misc import compute_resized_shape
 from .fix_distortion.fix_distortion import FixDistortion
 from .combination import Combination
+from .utils.arg_parser import get_parser
+from .utils.misc import compute_resized_shape
+from .utils.save_output import save_mask
 
 
 def main():
@@ -23,7 +25,7 @@ def main():
         raise FileNotFoundError(f"{args.output_dir} does not exist")
     # check if the output directory exists
     try:
-        pil_image = Image.open(args.input)
+        pil_image = Image.open(args.input).convert("RGB")
     except FileNotFoundError:
         raise FileNotFoundError(f"{args.input} does not exist")
     except Exception as e:
@@ -33,7 +35,12 @@ def main():
     new_shape = (1024, 1024)  # width, height
     predict_fg = PredictForeground(args, new_size=new_shape)
     predict_sp = SplitPage(args, new_size=new_shape)
-    split_pages = Combination(args, predict_fg, predict_sp)
+    split_pages = Combination(
+        args,
+        predict_fg,
+        predict_sp,
+        save_mask_fn=partial(save_mask, path_to_save=args.output_dir),
+    )
     fix_distortion = FixDistortion(args, target_size=new_shape)
 
     # convert the image to numpy array and change the channel order
