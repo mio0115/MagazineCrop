@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 from .remove_background.infer import PredictForeground
-from .split_page.splitting import SplitPage
+from .split_page.infer import SplitPage
 from .fix_distortion.fix_distortion import FixDistortion
 from .combination import Combination
 from .utils.arg_parser import get_parser

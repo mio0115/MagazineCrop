@@ -1,53 +1,193 @@
 import os
-import math
 
 import torch
-from torch import nn
 import cv2
 import numpy as np
 
-from .model.model import build_model
 from ..utils.arg_parser import get_parser
-from ..utils.misc import resize_with_aspect_ratio
+from ..utils.misc import resize_with_aspect_ratio, scharr_edge_detection
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
 
 
-class PredictSplitCoord(object):
-    def __init__(self, args, new_size: tuple[int] = (1024, 1024)):
-        if hasattr(args, "device"):
-            self._model_device = args.device
-        elif hasattr(args, "use_gpu"):
-            self._model_device = "cuda" if args.use_gpu else "cpu"
-        else:
-            print("Use either get_parser('user') or get_parser('dev')")
+def _lines_suppress(height: int, width: int, lines: np.ndarray):
+    all_line_segments: dict[tuple[int, int], list[float]] = {}
+    for line in lines:
+        x1, y1, x2, y2 = line
 
-        if hasattr(args, "sp_pg_model_name"):
-            self._model = torch.load(
-                os.path.join(
-                    os.getcwd(),
-                    "src",
-                    "split_page",
-                    "checkpoints",
-                    args.sp_pg_model_name,
-                ),
-                weights_only=False,
-            )
+        if np.isclose(x1, x2):
+            intersect_x = x1
+            arc_angle = np.pi / 2
         else:
-            self._model = torch.load(
-                os.path.join(
-                    os.getcwd(), "src", "split_page", "checkpoints", "sp_pg_mod.pth"
-                ),
-                weights_only=False,
-            )
+            slope = (y1 - y2) / (x1 - x2)
+            bias = y1 - slope * x1
+            if not np.isclose(slope, 0):
+                intersect_x = 1 / slope * (height / 2 - bias)
+
+            arc_angle = np.arctan(slope)
+            if arc_angle < 0:
+                arc_angle += np.pi
+        angle = arc_angle * 180 / np.pi
+        if angle < 80 or angle > 100:
+            continue
+
+        intersect_x = round(intersect_x)
+        if intersect_x % 10 >= 5:
+            intersect_x = (intersect_x // 10 + 1) * 10
+        else:
+            intersect_x = intersect_x // 10 * 10
+        all_line_segments.setdefault((intersect_x, round(angle)), []).append(
+            [x1, y1, x2, y2]
+        )
+
+    all_lines = dict.fromkeys(all_line_segments.keys(), 0)
+    for key, pt_pairs in all_line_segments.items():
+        pt1, pt2 = pt_pairs[0][:2], pt_pairs[0][2:]
+        for x1, y1, x2, y2 in pt_pairs[1:]:
+            if y1 < pt1[1]:
+                pt1 = (x1, y1)
+            if y2 > pt2[1]:
+                pt2 = (x2, y2)
+        all_lines[key] = ((pt1[0] - pt2[0]) ** 2 + (pt1[1] - pt2[1]) ** 2) ** 0.5
+
+    return all_lines
+
+
+def _compute_line_dist(
+    width: int,
+    target_line: tuple[float, float],
+    candidates: dict[tuple[int, int], float],
+):
+    line_dist = dict.fromkeys(candidates.keys(), 0)
+    tgt_x_coord, tgt_angle = target_line
+
+    tgt_x_coord = tgt_x_coord / width
+    for x_coord, angle in candidates.keys():
+        line_dist[(x_coord, angle)] = (
+            np.abs(tgt_x_coord - x_coord / width) ** 2
+            + np.abs(tgt_angle / 180 - angle / 180) ** 2
+        ) * 0.5
+
+    return line_dist
+
+
+def _choose_best_line(
+    lines, lines_dist: dict[tuple[int, int], float]
+) -> tuple[int, float]:
+    thresh_keys, thresh = [], 5e-4
+
+    for key, dist in lines_dist.items():
+        if dist < thresh:
+            thresh_keys.append(key)
+
+    key = None
+    if len(thresh_keys) > 0:
+        key = max(thresh_keys, key=lambda x: lines[x])
+
+    return key
+
+
+def _to_scharr(image: np.ndarray, is_gray: bool = False):
+    if not is_gray:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    blurred_img = cv2.GaussianBlur(image, (11, 11), 0)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    image = clahe.apply(blurred_img)
+
+    scharr_img = scharr_edge_detection(image)
+
+    return scharr_img
+
+
+class SplitPage(object):
+    def __init__(
+        self,
+        device: str = "cuda",
+        model_name: str = "sp_pg_mod.pth",
+        verbose: int = 0,
+        new_size: tuple[int] = (1024, 1024),
+    ):
+        self._predict_coord = PredictSplitCoord(
+            device=device, model_name=model_name, verbose=verbose, new_size=new_size
+        )
+        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(16, 16))
+        self._morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+
+    def _get_hough_lines(self, image: np.ndarray) -> np.ndarray:
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # apply CLAHE to enhance the contrast of the image
+        enhanced_img = self._clahe.apply(gray_image)
+        # apply GaussianBlur to reduce noise
+        blurred_img = cv2.GaussianBlur(enhanced_img, (11, 11), 0)
+        # apply vertical sobel filter to enhance the vertical edges
+        sobel_vertical = cv2.Sobel(blurred_img, cv2.CV_64F, 1, 0, ksize=3)
+        abs_sobel_vertical = np.absolute(sobel_vertical)
+        sobel_vertical_8u = np.uint8(abs_sobel_vertical)
+        # apply morphological opening to remove noise
+        morph_img = cv2.morphologyEx(
+            sobel_vertical_8u, cv2.MORPH_OPEN, self._morph_kernel
+        )
+
+        # apply canny edge detection to detect edges
+        canny_img = cv2.Canny(morph_img, 30, 100)
+
+        lines = cv2.HoughLinesP(
+            canny_img,
+            rho=1.0,
+            theta=np.pi / 180.0,
+            threshold=50,
+            minLineLength=50,
+            maxLineGap=5,
+        )
+
+        if lines is not None:
+            lines = lines.squeeze(1)
+        else:
+            lines = np.array([])
+
+        return lines
+
+    def __call__(self, image: np.ndarray) -> tuple[np.ndarray]:
+        line_segments = self._get_hough_lines(image)
+        lines = _lines_suppress(image.shape[0], image.shape[1], line_segments)
+
+        pred_x, pred_arc_angle = self._predict_coord(image)
+        pred_angle = pred_arc_angle[0] / np.pi * 180
+
+        lines_dist = _compute_line_dist(
+            width=image.shape[1], target_line=(pred_x, pred_angle), candidates=lines
+        )
+        best_coord = _choose_best_line(lines=lines, lines_dist=lines_dist)
+        if best_coord is None:
+            best_coord = (round(pred_x), 90)
+
+        return best_coord
+
+
+class PredictSplitCoord(object):
+    def __init__(
+        self,
+        device: str = "cuda",
+        model_name: str = "sp_pg_mod.pth",
+        verbose: int = 0,
+        new_size: tuple[int] = (1024, 1024),
+    ):
+        self._model_device = device
+        self._model = torch.load(
+            os.path.join(
+                os.getcwd(),
+                "src",
+                "split_page",
+                "checkpoints",
+                model_name,
+            ),
+            weights_only=False,
+        )
         self._model.to(self._model_device)
 
-        if hasattr(args, "verbose"):
-            self._verbose = args.verbose
-        else:
-            self._verbose = 0
-
+        self._verbose = verbose
         self._new_size = new_size
 
     def __call__(self, image: np.ndarray) -> tuple[int]:
