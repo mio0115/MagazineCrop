@@ -64,13 +64,13 @@ if __name__ == "__main__":
             if args.num_pages == 2:
                 pil_original = Image.open(
                     os.path.join(path_to_dir, base_name, f"{base_name}.tif")
-                )
+                ).convert("RGB")
                 pil_left = Image.open(
                     os.path.join(path_to_dir, base_name, f"{base_name}_0.tif")
-                )
+                ).convert("RGB")
                 pil_right = Image.open(
                     os.path.join(path_to_dir, base_name, f"{base_name}_1.tif")
-                )
+                ).convert("RGB")
 
                 original = np.array(pil_original, dtype=np.uint8)[..., ::-1]
                 left = np.array(pil_left, dtype=np.uint8)[..., ::-1]
