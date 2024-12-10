@@ -33,15 +33,19 @@ def main():
 
     # initialize the pipeline
     new_shape = (1024, 1024)  # width, height
-    predict_fg = PredictForeground(args, new_size=new_shape)
-    predict_sp = SplitPage(args, new_size=new_shape)
+    device = "cuda" if args.use_gpu else "cpu"
+    predict_fg = PredictForeground(
+        device=device, verbose=args.verbose, new_size=new_shape
+    )
+    predict_sp = SplitPage(device=device, verbose=args.verbose, new_size=new_shape)
     split_pages = Combination(
-        args,
         predict_fg,
         predict_sp,
+        num_pages=1 if args.single_page else 2,
+        verbose=args.verbose,
         save_mask_fn=partial(save_mask, path_to_save=args.output_dir),
     )
-    fix_distortion = FixDistortion(args, target_size=new_shape)
+    fix_distortion = FixDistortion(target_size=new_shape)
 
     # convert the image to numpy array and change the channel order
     image = np.array(pil_image, dtype=np.uint8)[..., ::-1]

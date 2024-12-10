@@ -41,7 +41,7 @@ class CombinationGenerator(object):
 
 
 class FixDistortion(object):
-    def __init__(self, args, target_size: tuple[int] = (1024, 1024)):
+    def __init__(self, target_size: tuple[int] = (1024, 1024)):
         self._target_size = target_size
 
     def perspectiveTransformApproach(self, img, mask):

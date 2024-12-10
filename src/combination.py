@@ -1,142 +1,150 @@
-import os
-import time
 from typing import Callable, Optional
 
 import cv2
 import numpy as np
-from PIL import Image
 
-from .remove_background.infer import PredictForeground
-from .split_page.splitting import SplitPage
-from .utils.arg_parser import get_parser
-from .utils.misc import resize_with_aspect_ratio, compute_resized_shape
-from .utils.save_output import save_line, save_mask
-from .fix_distortion.fix_distortion import FixDistortion
+from .utils.misc import resize_with_aspect_ratio
+
+
+def _drop_background(image, masks: list[np.ndarray]):
+    pages = []
+    for mask in masks:
+        # we need to drop the background from the image based on the mask
+        for top in range(mask.shape[0]):
+            if np.any(mask[top]):
+                break
+        for bottom in range(mask.shape[0] - 1, -1, -1):
+            if np.any(mask[bottom]):
+                break
+        for left in range(mask.shape[1]):
+            if np.any(mask[:, left]):
+                break
+        for right in range(mask.shape[1] - 1, -1, -1):
+            if np.any(mask[:, right]):
+                break
+
+        pages.append(
+            {
+                "image": image[top:bottom, left:right, :],
+                "mask": mask[top:bottom, left:right],
+            }
+        )
+
+    return pages
+
+
+def _fix_mask(masks: list[np.ndarray], thresh: float = 0.9) -> np.ndarray:
+    fixed_masks = []
+    for mask in masks:
+        amplified_mask = (mask.copy() * 255).astype(np.uint8)
+
+        # find the largest contour in the mask
+        # note that there is only one component in the mask
+        contours, _ = cv2.findContours(
+            amplified_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        largest_contour = max(contours, key=cv2.contourArea)
+
+        # approximate the largest contour with a polygon
+        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+        approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+
+        fixed_mask = cv2.fillPoly(mask.astype(np.uint8), [approx], 1)
+        fixed_masks.append(fixed_mask)
+
+    return fixed_masks
+
+
+def _compute_line_length(mask, dividing_line):
+    line_x_coord, line_theta = dividing_line
+
+    true_count = np.zeros(mask.shape[1], dtype=np.int32)
+    if np.isclose(line_theta, 90):
+        true_count = np.sum(mask, 0)
+    else:
+        line_slope = np.tan(np.deg2rad(line_theta))
+        for y in range(mask.shape[0]):
+            # we find the delta_x for each y
+            delta_x = -1 * int((y - mask.shape[0] / 2) / line_slope)
+            piece_mask = mask[
+                y, max(0, delta_x) : min(mask.shape[1], mask.shape[1] + delta_x)
+            ]
+
+            if delta_x < 0:
+                piece_mask = np.pad(
+                    piece_mask, (-delta_x, 0), "constant", constant_values=0
+                )
+            else:
+                piece_mask = np.pad(
+                    piece_mask, (0, delta_x), "constant", constant_values=0
+                )
+            true_count += piece_mask
+    return np.median(true_count[true_count > 0])
+
+
+def _split_mask(mask, dividing_line):
+    line_x_coord, line_theta = dividing_line
+
+    if np.isclose(line_theta, 90):
+        # if dividing line is vertical, we can simply split the mask into two parts
+        # then we pad the divided mask with zeros to make it rectangle
+        left_mask = np.pad(
+            mask[:, :line_x_coord],
+            pad_width=((0, 0), (0, mask.shape[1] - line_x_coord)),
+            mode="constant",
+            constant_values=0,
+        )
+        right_mask = np.pad(
+            mask[:, line_x_coord:],
+            pad_width=((0, 0), (line_x_coord, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+    else:
+        left_mask, right_mask = [], []
+        line_slope = np.tan(np.deg2rad(line_theta))
+        # we pad the divided mask with zeros to make it rectangle
+        for y in range(mask.shape[0]):
+            sep_pt = line_x_coord + int((y - mask.shape[0] / 2) / line_slope)
+            left_mask.append(
+                np.pad(
+                    mask[y, :sep_pt],
+                    pad_width=(0, mask.shape[1] - sep_pt),
+                    mode="constant",
+                    constant_values=0,
+                )
+            )
+            right_mask.append(
+                np.pad(
+                    mask[y, sep_pt:],
+                    pad_width=(sep_pt, 0),
+                    mode="constant",
+                    constant_values=0,
+                )
+            )
+        # finally, we return the left and right mask
+        left_mask = np.stack(left_mask)
+        right_mask = np.stack(right_mask)
+
+    return left_mask, right_mask
 
 
 class Combination(object):
     def __init__(
         self,
-        args,
         predict_foreground,
         predict_split_coord,
+        num_pages: int = 2,
+        verbose: int = 0,
         save_mask_fn: Optional[Callable] = None,
     ):
-        if hasattr(args, "num_pages"):
-            self._num_pages = args.num_pages
-        elif hasattr(args, "single_page"):
-            self._num_pages = 2 if not args.single_page else 1
-
-        if hasattr(args, "save_steps_output"):
-            self._save_steps_output = args.save_steps_output
-        else:
-            self._save_steps_output = False
-
-        if hasattr(args, "verbose"):
-            self._verbose = args.verbose
-        else:
-            self._verbose = 0
+        self._num_pages = num_pages
+        self._verbose = verbose
 
         self._predict_fg = predict_foreground
         self._predict_sp = predict_split_coord
         self._save_mask_fn = save_mask_fn
         self._original_shape = None
-
-    @staticmethod
-    def fix_mask(masks: list[np.ndarray], thresh: float = 0.9) -> np.ndarray:
-        fixed_masks = []
-        for mask in masks:
-            amplified_mask = (mask.copy() * 255).astype(np.uint8)
-
-            # find the largest contour in the mask
-            # note that there is only one component in the mask
-            contours, _ = cv2.findContours(
-                amplified_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-            largest_contour = max(contours, key=cv2.contourArea)
-
-            # approximate the largest contour with a polygon
-            epsilon = 0.02 * cv2.arcLength(largest_contour, True)
-            approx = cv2.approxPolyDP(largest_contour, epsilon, True)
-
-            fixed_mask = cv2.fillPoly(mask.astype(np.uint8), [approx], 1)
-            fixed_masks.append(fixed_mask)
-
-        return fixed_masks
-
-    @staticmethod
-    def compute_line_length(mask, dividing_line):
-        line_x_coord, line_theta = dividing_line
-
-        true_count = np.zeros(mask.shape[1], dtype=np.int32)
-        if np.isclose(line_theta, 90):
-            true_count = np.sum(mask, 0)
-        else:
-            line_slope = np.tan(np.deg2rad(line_theta))
-            for y in range(mask.shape[0]):
-                # we find the delta_x for each y
-                delta_x = -1 * int((y - mask.shape[0] / 2) / line_slope)
-                piece_mask = mask[
-                    y, max(0, delta_x) : min(mask.shape[1], mask.shape[1] + delta_x)
-                ]
-
-                if delta_x < 0:
-                    piece_mask = np.pad(
-                        piece_mask, (-delta_x, 0), "constant", constant_values=0
-                    )
-                else:
-                    piece_mask = np.pad(
-                        piece_mask, (0, delta_x), "constant", constant_values=0
-                    )
-                true_count += piece_mask
-        return np.median(true_count[true_count > 0])
-
-    @staticmethod
-    def split_mask(mask, dividing_line):
-        line_x_coord, line_theta = dividing_line
-
-        if np.isclose(line_theta, 90):
-            # if dividing line is vertical, we can simply split the mask into two parts
-            # then we pad the divided mask with zeros to make it rectangle
-            left_mask = np.pad(
-                mask[:, :line_x_coord],
-                pad_width=((0, 0), (0, mask.shape[1] - line_x_coord)),
-                mode="constant",
-                constant_values=0,
-            )
-            right_mask = np.pad(
-                mask[:, line_x_coord:],
-                pad_width=((0, 0), (line_x_coord, 0)),
-                mode="constant",
-                constant_values=0,
-            )
-        else:
-            left_mask, right_mask = [], []
-            line_slope = np.tan(np.deg2rad(line_theta))
-            # we pad the divided mask with zeros to make it rectangle
-            for y in range(mask.shape[0]):
-                sep_pt = line_x_coord + int((y - mask.shape[0] / 2) / line_slope)
-                left_mask.append(
-                    np.pad(
-                        mask[y, :sep_pt],
-                        pad_width=(0, mask.shape[1] - sep_pt),
-                        mode="constant",
-                        constant_values=0,
-                    )
-                )
-                right_mask.append(
-                    np.pad(
-                        mask[y, sep_pt:],
-                        pad_width=(sep_pt, 0),
-                        mode="constant",
-                        constant_values=0,
-                    )
-                )
-            # finally, we return the left and right mask
-            left_mask = np.stack(left_mask)
-            right_mask = np.stack(right_mask)
-
-        return left_mask, right_mask
 
     def mask_recovery(self, masks: list[np.ndarray], padding: tuple[int]):
         top, bottom, left, right = padding
@@ -178,33 +186,6 @@ class Combination(object):
 
         return recovered_masks
 
-    @staticmethod
-    def drop_background(image, masks: list[np.ndarray]):
-        pages = []
-        for mask in masks:
-            # we need to drop the background from the image based on the mask
-            for top in range(mask.shape[0]):
-                if np.any(mask[top]):
-                    break
-            for bottom in range(mask.shape[0] - 1, -1, -1):
-                if np.any(mask[bottom]):
-                    break
-            for left in range(mask.shape[1]):
-                if np.any(mask[:, left]):
-                    break
-            for right in range(mask.shape[1] - 1, -1, -1):
-                if np.any(mask[:, right]):
-                    break
-
-            pages.append(
-                {
-                    "image": image[top:bottom, left:right, :],
-                    "mask": mask[top:bottom, left:right],
-                }
-            )
-
-        return pages
-
     def _save_masks(self, image: np.ndarray, masks: list[np.ndarray], name: str):
         if self._verbose > 0:
             for i, mask in enumerate(masks):
@@ -228,7 +209,7 @@ class Combination(object):
             line_x_coord = int(line_x_coord / image.shape[1] * fg_mask.shape[1])
 
             # split the mask into two parts based on the dividing line
-            resized_left_mask, resized_right_mask = Combination.split_mask(
+            resized_left_mask, resized_right_mask = _split_mask(
                 fg_mask, (line_x_coord, line_theta)
             )
             resized_masks = [resized_left_mask, resized_right_mask]
@@ -238,7 +219,7 @@ class Combination(object):
         # fix the mask by either filling the holes or removing the edges
         # currently, we only fill the holes
         # TODO: find better approach to fix the mask
-        fixed_masks = Combination.fix_mask(resized_masks)
+        fixed_masks = _fix_mask(resized_masks)
         self._save_masks(resized_img, fixed_masks, "filled_mask")
 
         # resize the mask back to the original size
@@ -249,7 +230,7 @@ class Combination(object):
         self._save_masks(image, masks, "recovered_mask")
 
         # drop the background from the image
-        pages = Combination.drop_background(image, masks)
+        pages = _drop_background(image, masks)
         for page in pages:
             self._save_masks(page["image"], [page["mask"]], name="page_mask")
 
