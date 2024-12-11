@@ -3,7 +3,7 @@ from typing import Callable, Optional
 import cv2
 import numpy as np
 
-from .utils.misc import resize_with_aspect_ratio
+from ..utils.misc import resize_with_aspect_ratio
 
 
 def _drop_background(image, masks: list[np.ndarray]):
