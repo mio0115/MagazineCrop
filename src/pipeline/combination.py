@@ -33,7 +33,34 @@ def _drop_background(image, masks: list[np.ndarray]):
     return pages
 
 
-def _fix_mask(masks: list[np.ndarray], thresh: float = 0.9) -> np.ndarray:
+def _on_line(coord, line, tolerance: float = 10.0):
+    x, y = coord
+    (x0, y0), theta = line
+
+    if np.isclose(y0, 90):
+        return np.isclose(x, x0)
+
+    slope = np.tan(np.deg2rad(theta))
+    return abs((y - y0) - slope * (x - x0)) < tolerance
+
+
+def _mask_height_profile(mask: np.ndarray) -> np.ndarray:
+    first_ones = np.argmax(mask, axis=0)
+    no_ones = ~mask.any(axis=0)
+    first_ones[no_ones] = -1
+
+    height = np.sum(mask, axis=0)
+
+    height_profile = np.concat([first_ones[:, None], height[:, None]], axis=-1)
+
+    return height_profile
+
+
+def _fix_mask(masks: list[np.ndarray], dividing_line: tuple[int, float]) -> np.ndarray:
+    height, _ = masks[0].shape
+    if dividing_line is not None:
+        dividing_line = ((dividing_line[0], height // 2), dividing_line[1])
+
     fixed_masks = []
     for mask in masks:
         amplified_mask = (mask.copy() * 255).astype(np.uint8)
@@ -45,12 +72,47 @@ def _fix_mask(masks: list[np.ndarray], thresh: float = 0.9) -> np.ndarray:
         )
         largest_contour = max(contours, key=cv2.contourArea)
 
-        # approximate the largest contour with a polygon
-        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
-        approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+        filled_mask = np.zeros_like(mask, dtype=np.uint8)
+        cv2.drawContours(filled_mask, [largest_contour], -1, 1, thickness=-1)
 
-        fixed_mask = cv2.fillPoly(mask.astype(np.uint8), [approx], 1)
-        fixed_masks.append(fixed_mask)
+        if dividing_line is None:
+            # single-page case
+            fixed_masks.append(filled_mask)
+            continue
+
+        rot_mat = cv2.getRotationMatrix2D(
+            center=dividing_line[0], angle=dividing_line[1] - 90, scale=1.0
+        )
+        rotated_mask = cv2.warpAffine(filled_mask.astype(np.uint8), rot_mat, mask.shape)
+
+        true_count = np.sum(rotated_mask, 0)
+        page_height = np.median(true_count[true_count > 0])
+
+        multiplier = 1 - (np.std(true_count[true_count > 0]) / np.max(true_count)) * 0.5
+        lower_thresh = page_height * multiplier
+        rotated_mask[:, true_count < lower_thresh] = 0
+
+        multiplier = (
+            1 + (np.std(true_count[true_count > 0]) / np.max(true_count)) * 0.05
+        )
+        upper_thresh = page_height * multiplier
+        for col_idx, count in enumerate(true_count):
+            if count > upper_thresh:
+                excess = count - upper_thresh
+
+                top_idx = 0
+                while excess > 0:
+                    if rotated_mask[top_idx, col_idx] == 1:
+                        rotated_mask[top_idx, col_idx] = 0
+                        excess -= 1
+                    top_idx += 1
+
+        inv_rot_mat = cv2.getRotationMatrix2D(
+            center=dividing_line[0], angle=90 - dividing_line[1], scale=1.0
+        )
+        inv_rot_mask = cv2.warpAffine(rotated_mask, inv_rot_mat, mask.shape)
+
+        fixed_masks.append(inv_rot_mask)
 
     return fixed_masks
 
@@ -207,6 +269,7 @@ class Combination(object):
             (line_x_coord, line_theta) = self._predict_sp(image)
             # convert the x-coordinate to the resized image
             line_x_coord = int(line_x_coord / image.shape[1] * fg_mask.shape[1])
+            dividing_line = (line_x_coord, line_theta)
 
             # split the mask into two parts based on the dividing line
             resized_left_mask, resized_right_mask = _split_mask(
@@ -214,12 +277,13 @@ class Combination(object):
             )
             resized_masks = [resized_left_mask, resized_right_mask]
         else:
+            dividing_line = None
             resized_masks = [fg_mask]
         self._save_masks(resized_img, resized_masks, "splitted_mask")
         # fix the mask by either filling the holes or removing the edges
         # currently, we only fill the holes
         # TODO: find better approach to fix the mask
-        fixed_masks = _fix_mask(resized_masks)
+        fixed_masks = _fix_mask(resized_masks, dividing_line=dividing_line)
         self._save_masks(resized_img, fixed_masks, "filled_mask")
 
         # resize the mask back to the original size
