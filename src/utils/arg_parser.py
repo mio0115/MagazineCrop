@@ -6,6 +6,8 @@ def get_parser(mode: str = "user"):
         return user_parser()
     elif mode == "dev":
         return dev_parser()
+    elif mode == "output":
+        return output_parser()
     else:
         raise ValueError(
             f"Invalid mode; mode should be either 'user' or 'dev' but got {mode}"
@@ -164,6 +166,45 @@ def dev_parser():
     )
     parser.add_argument(
         "--num-pages", type=int, default=2, choices=[1, 2], dest="num_pages"
+    )
+
+    return parser
+
+
+def output_parser():
+    parser = argparse.ArgumentParser(
+        description="Combine the original and processed images."
+    )
+    parser.add_argument(
+        "--original", type=str, required=True, help="Path to the original image"
+    )
+    parser.add_argument(
+        "--processed",
+        type=str,
+        nargs="+",
+        help="Path to the processed images. The order should be left, right.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=str,
+        required=True,
+        dest="output_dir",
+        help="Path to the output directory",
+    )
+    parser.add_argument(
+        "--save-as",
+        type=str,
+        dest="save_as",
+        help="Save the output as a specific name. Default name is the same as original image.",
+    )
+    parser.add_argument(
+        "--scale",
+        "--output-scale",
+        type=float,
+        default=1.0,
+        dest="scale",
+        help="Scale of the output image. Default is 1.0.",
     )
 
     return parser
