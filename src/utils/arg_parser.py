@@ -19,7 +19,7 @@ def user_parser():
 
     parser.add_argument(
         "-i",
-        "--input",
+        "--input-image",
         type=str,
         required=True,
         dest="input",
@@ -27,13 +27,14 @@ def user_parser():
     )
     parser.add_argument(
         "-o",
-        "--output-dir",
+        "--output-directory",
         type=str,
         required=True,
         dest="output_dir",
         help="Path to the directory where output files will be saved",
     )
     parser.add_argument(
+        "--scale-factor",
         "--output-scale",
         type=float,
         default=1.0,
@@ -41,6 +42,7 @@ def user_parser():
         help="Scale area for the output images; default is 1.0",
     )
     parser.add_argument(
+        "-q",
         "--compression-quality",
         type=int,
         default=95,
@@ -72,7 +74,8 @@ def dev_parser():
     parser = argparse.ArgumentParser()
 
     # arguments for training model
-    parser.add_argument(
+    training_group = parser.add_argument_group("Training arguments")
+    training_group.add_argument(
         "-e",
         "--epochs",
         type=int,
@@ -80,7 +83,7 @@ def dev_parser():
         dest="epochs",
         help="number of epochs to train the model",
     )
-    parser.add_argument(
+    training_group.add_argument(
         "-bs",
         "--batch-size",
         type=int,
@@ -88,7 +91,7 @@ def dev_parser():
         dest="batch_size",
         help="batch size for training",
     )
-    parser.add_argument(
+    training_group.add_argument(
         "-lr",
         "--learning-rate",
         type=float,
@@ -96,29 +99,31 @@ def dev_parser():
         dest="learning_rate",
         help="learning rate for training",
     )
-    parser.add_argument(
+    training_group.add_argument(
         "--lr-backbone",
         type=float,
         default=1e-4,
         dest="lr_backbone",
         help="learning rate for backbone",
     )
-    parser.add_argument(
+    training_group.add_argument(
         "--device",
         type=str,
         default="cuda",
         dest="device",
         help="device to train the model on",
     )
-    parser.add_argument(
+    training_group.add_argument(
         "--save-as", type=str, default="rm_bg_unetpp.pth", dest="save_as"
     )
-    parser.add_argument("--augment_factor", type=int, default=5, dest="augment_factor")
-    parser.add_argument(
+    training_group.add_argument(
+        "--augment_factor", type=int, default=5, dest="augment_factor"
+    )
+    training_group.add_argument(
         "--train", action="store_true", dest="train", help="train the model"
     )
-    parser.add_argument("--resume", action="store_true", dest="resume")
-    parser.add_argument(
+    training_group.add_argument("--resume", action="store_true", dest="resume")
+    training_group.add_argument(
         "--resume-from",
         type=str,
         default="rm_bg_unetpp_pretrained.pth",
@@ -126,40 +131,47 @@ def dev_parser():
     )
 
     # arguments for inference
-    parser.add_argument(
-        "--path-to-image_dir",
+    inference_group = parser.add_argument_group("Inference arguments")
+    inference_group.add_argument(
+        "--image_dir",
         type=str,
         default="./data/example",
         dest="path_to_image_dir",
         help="path to the input image directory",
     )
-    parser.add_argument(
+    inference_group.add_argument(
         "--image-name", type=str, default="no1-0818_132552.tiff", dest="image_name"
     )
-    parser.add_argument(
-        "--path-to-model-dir",
+    inference_group.add_argument(
+        "--model-dir",
         type=str,
         default="./src/remove_background/checkpoints",
         dest="path_to_model_dir",
         help="path to the directory placed trained model",
     )
-    parser.add_argument(
+    inference_group.add_argument(
         "--model-name",
         type=str,
         default="model.pth",
         dest="model_name",
         help="name of the model",
     )
-    parser.add_argument(
-        "--path-to-output-dir",
+    inference_group.add_argument(
+        "--output-dir",
         type=str,
         default="./data/output",
         dest="path_to_output_dir",
         help="path to the output directory",
     )
-    parser.add_argument("--output-as", type=str, default="image.jpg", dest="output_as")
-    parser.add_argument("--rm-bg-model-name", type=str, default="rm_bg_entire_iter.pth")
-    parser.add_argument("--sp-pg-model-name", type=str, default="sp_pg_mod.pth")
+    inference_group.add_argument(
+        "--output-name", type=str, default="image.jpg", dest="output_as"
+    )
+    inference_group.add_argument(
+        "--rm-bg-model-name", type=str, default="rm_bg_entire_iter.pth"
+    )
+    inference_group.add_argument(
+        "--sp-pg-model-name", type=str, default="sp_pg_mod.pth"
+    )
 
     parser.add_argument(
         "-v", "--verbose", action="count", default=0, dest="Set verbosity level"
@@ -173,33 +185,33 @@ def dev_parser():
 
 def output_parser():
     parser = argparse.ArgumentParser(
-        description="Combine the original and processed images."
+        description="Combine the original and processed images into a single output."
     )
     parser.add_argument(
-        "--original", type=str, required=True, help="Path to the original image"
+        "--original-image", type=str, required=True, help="Path to the original image"
     )
     parser.add_argument(
-        "--processed",
+        "--processed-images",
         type=str,
         nargs="+",
         help="Path to the processed images. The order should be left, right.",
     )
     parser.add_argument(
         "-o",
-        "--output-dir",
+        "--output-directory",
         type=str,
         required=True,
         dest="output_dir",
         help="Path to the output directory",
     )
     parser.add_argument(
-        "--save-as",
+        "--output-name",
         type=str,
         dest="save_as",
         help="Save the output as a specific name. Default name is the same as original image.",
     )
     parser.add_argument(
-        "--scale",
+        "--scale-factor",
         "--output-scale",
         type=float,
         default=1.0,
