@@ -57,6 +57,9 @@ def combine_processed():
     original: np.ndarray = _load_image(args.original)
     processed: list[np.ndarray] = [_load_image(path) for path in args.processed]
 
+    if args.original_scale_factor != 1.0:
+        original = scale_image(original, args.original_scale_factor)
+
     # pad images for much clearer seperation
     pad_color = (0, 255, 255)  # yellow
     pad_original = _pad_image(original, pad_color=pad_color)

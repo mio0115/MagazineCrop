@@ -188,12 +188,17 @@ def output_parser():
         description="Combine the original and processed images into a single output."
     )
     parser.add_argument(
-        "--original-image", type=str, required=True, help="Path to the original image"
+        "--original-image",
+        type=str,
+        required=True,
+        dest="original",
+        help="Path to the original image",
     )
     parser.add_argument(
         "--processed-images",
         type=str,
         nargs="+",
+        dest="processed",
         help="Path to the processed images. The order should be left, right.",
     )
     parser.add_argument(
@@ -217,6 +222,9 @@ def output_parser():
         default=1.0,
         dest="scale",
         help="Scale of the output image. Default is 1.0.",
+    )
+    parser.add_argument(
+        "--original-scale-factor", type=float, default=1.0, dest="original_scale_factor"
     )
 
     return parser
