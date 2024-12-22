@@ -336,3 +336,7 @@ def compute_resized_shape(shape: tuple[int], scale: float = 1.0):
     new_width = int(resized_area / new_height)
 
     return (new_height, new_width)
+
+
+def compute_dist_2d(p1, p2):
+    return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
