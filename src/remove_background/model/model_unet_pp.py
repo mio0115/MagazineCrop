@@ -68,16 +68,6 @@ class IterativeModel(nn.Module):
         return logits
 
 
-def build_model(
-    number_of_classes: int = 20, embed_dims: list[int] = [32, 64, 128, 256, 512]
-) -> Model:
-
-    backbone = build_unetpp(in_channels=1, embed_dims=embed_dims)
-    model = Model(backbone, number_of_classes)
-
-    return model
-
-
 def build_iterative_model(embed_dims: list[int] = [32, 64, 128, 256, 512]):
     backbones = [
         build_unetpp(in_channels=32, embed_dims=embed_dims[:ind])
@@ -96,4 +86,3 @@ if __name__ == "__main__":
 
     for output in outputs:
         print(output.shape)
-    # print(type(outputs), len(outputs))

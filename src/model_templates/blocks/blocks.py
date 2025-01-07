@@ -47,20 +47,7 @@ class ExpansiveBlock(nn.Module):
 
         self._embed_dims = embed_dims  # [1024, 512, 256, 128, 64]
 
-        # output the probability of the pixel being foreground
-        self._output_layer = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self._embed_dims[-1],
-                out_channels=1,
-                kernel_size=1,
-                bias=False,
-            ),
-        )
-
         self._conv_blocks = nn.ModuleList()
-        # self._expansive_layers = nn.ModuleList()
-        self._expand = nn.UpsamplingBilinear2d(scale_factor=2)
-
         for channels in self._embed_dims[1:]:
             self._conv_blocks.append(
                 DoubleConvBlock(
@@ -70,20 +57,30 @@ class ExpansiveBlock(nn.Module):
                 )
             )
 
+        self._upsample = nn.ModuleList()
+        for prev_channels, channels in zip(self._embed_dims, self._embed_dims[1:]):
+            upsample_blk = nn.Sequential(
+                nn.UpsamplingBilinear2d(scale_factor=2),
+                nn.Conv2d(prev_channels, channels, kernel_size=1, bias=False),
+            )
+            self._upsample.append(upsample_blk)
+
     def forward(self, records: list[torch.Tensor]) -> torch.Tensor:
         # reverse the records to match the order of the expansive layers
         records = records[::-1]
 
         x = records[0]
-        for src, conv_blk in zip(records[1:], self._conv_blocks):
-            x = self._expand(x)
+        for src, conv_blk, upsample_blk in zip(
+            records[1:], self._conv_blocks, self._upsample
+        ):
+            x = upsample_blk(x)
             # concat outputs of the contractive block with outputs of previous expansive layer
             x = torch.cat([x, src], dim=1)
             x = conv_blk(x)
 
         # output the logits of the pixel being foreground
         # remember to apply the sigmoid function to get the probability
-        logits = self._output_layer(x)
+        logits = x
 
         return logits
 
