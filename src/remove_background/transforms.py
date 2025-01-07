@@ -49,7 +49,9 @@ class Rotate(object):
     def __init__(self, random_angle_range=(-20, 20)):
         self._random_angle_range = random_angle_range
 
-    def __call__(self, img, tgt) -> tuple[np.ndarray, np.ndarray]:
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         # angle in degrees
         angle = np.random.randint(*self._random_angle_range)
         height, width = img.shape[:2]
@@ -58,13 +60,17 @@ class Rotate(object):
         rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 
         rotated_img = cv2.warpAffine(img, rot_mat, (width, height))
+
         rotated_tgt = cv2.warpAffine(
             tgt, rot_mat, (width, height), flags=cv2.INTER_NEAREST
+        )
+        rotated_weights = cv2.warpAffine(
+            weights, rot_mat, (width, height), flags=cv2.INTER_AREA
         )
         if img.ndim > rotated_img.ndim:
             rotated_img = rotated_img[..., None]
 
-        return rotated_img, rotated_tgt
+        return rotated_img, rotated_tgt, rotated_weights
 
 
 class RandomHorizontalFlip(object):
@@ -72,13 +78,14 @@ class RandomHorizontalFlip(object):
         self._not_flip_prob = not_flip_prob
 
     def __call__(
-        self, img: np.ndarray, tgt: np.ndarray
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         if np.random.rand() >= self._not_flip_prob:
             img = np.flip(img, axis=1)
             tgt = np.flip(tgt, axis=1)
+            weights = np.flip(weights, axis=1)
 
-        return img, tgt
+        return img, tgt, weights
 
 
 class PrintShape(object):
@@ -106,7 +113,7 @@ class RandomResizedCrop(object):
         self._not_crop_prob = not_crop_prob
 
     def __call__(
-        self, img: np.ndarray, tgt: np.ndarray
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         height, width, _ = img.shape
         area = height * width
@@ -114,11 +121,13 @@ class RandomResizedCrop(object):
         resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
         resized_tgt, _ = resize_with_aspect_ratio(tgt, target_size=self._size)
         resized_tgt = resized_tgt.clip(max=self._num_cls)
+        resized_weights, _ = resize_with_aspect_ratio(weights, target_size=self._size)
+
         if np.random.rand() < self._not_crop_prob:
             # do not crop
             if img.ndim > resized_img.ndim:
                 resized_img = resized_img[..., None]
-            return resized_img, resized_tgt
+            return resized_img, resized_tgt, resized_weights
 
         for _ in range(self._attempt_limit):
             scale = np.random.uniform(self._scale[0], self._scale[1])
@@ -135,16 +144,25 @@ class RandomResizedCrop(object):
 
             new_img = img[min_y : min_y + new_height, min_x : min_x + new_width, :]
             new_tgt = tgt[min_y : min_y + new_height, min_x : min_x + new_width]
+            new_weights = weights[min_y : min_y + new_height, min_x : min_x + new_width]
 
             resized_img, _ = resize_with_aspect_ratio(new_img, target_size=self._size)
             resized_tgt, _ = resize_with_aspect_ratio(new_tgt, target_size=self._size)
+
+            resized_weights, _, pad_coords = resize_with_aspect_ratio(
+                new_weights, target_size=self._size, return_pad=True
+            )
+            mask = np.zeros_like(resized_weights, dtype=np.int32)
+            mask[pad_coords[0] : pad_coords[1], pad_coords[2] : pad_coords[3]] = 1
+            resized_weights = resized_weights * mask
+
             resized_tgt = resized_tgt.clip(max=self._num_cls)
             break
 
         if img.ndim > resized_img.ndim:
             resized_img = resized_img[..., None]
 
-        return resized_img, resized_tgt
+        return resized_img, resized_tgt, resized_weights
 
 
 class Resize(object):
@@ -183,13 +201,14 @@ class CenterCrop(object):
 
 class ArrayToTensor(object):
     def __call__(
-        self, img: np.ndarray, tgt: np.ndarray
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        img = torch.from_numpy(img) / 255.0
-        tgt = torch.from_numpy(tgt)
+        img = torch.from_numpy(img).float() / 255.0
+        tgt = torch.from_numpy(tgt).float()
+        weights = torch.from_numpy(weights).float()
 
         # permute img to (C, H, W)
-        return img.permute(2, 0, 1), tgt
+        return img.permute(2, 0, 1), tgt, weights
 
 
 class MaskToBinary(object):
@@ -197,13 +216,13 @@ class MaskToBinary(object):
         super(MaskToBinary, self).__init__(*args, **kwargs)
 
     def __call__(
-        self, img: np.ndarray, tgt: np.ndarray
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         # convert to binary mask
         # 0: background, 1: foreground
         tgt = (tgt > 0).astype(np.int64)
 
-        return img, tgt
+        return img, tgt, weights
 
 
 def build_transform():
@@ -238,7 +257,6 @@ def build_scanned_transform():
             Rotate(),
             RandomHorizontalFlip(),
             RandomResizedCrop(size=(640, 640), scale=(0.25, 1.0)),
-            MaskToBinary(),
             ArrayToTensor(),
         ]
     )
