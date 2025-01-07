@@ -134,10 +134,10 @@ class MagazineCropDataset(Dataset):
         self._augment_factor = augment_factor
 
         self._labels = {
-            "background": 0,
-            "foreground": 1,
-            "bookmark": 2,
-            "bookmark_mask": 0,
+            "background": 2,
+            "foreground": 0,
+            "bookmark": 1,
+            "bookmark_mask": 2,
         }
         self._label_order = ["bookmark", "bookmark_mask", "foreground"]
 
