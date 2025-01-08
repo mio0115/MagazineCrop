@@ -117,7 +117,7 @@ def dev_parser():
         "--save-as", type=str, default="rm_bg_unetpp.pth", dest="save_as"
     )
     training_group.add_argument(
-        "--augment_factor", type=int, default=5, dest="augment_factor"
+        "--augment-factor", type=int, default=5, dest="augment_factor"
     )
     training_group.add_argument(
         "--train", action="store_true", dest="train", help="train the model"
