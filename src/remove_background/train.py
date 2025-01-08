@@ -5,7 +5,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import numpy as np
 
-from .model.model_unet_pp import build_model, build_iterative_model
+from .model.model_unet import build_iterative_model
 from .datasets import MyVOCSegmentation, MagazineCropDataset
 from .transforms import (
     build_transform,
@@ -32,21 +32,24 @@ def train(
     print("Training model...")
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 25, 30])
     model = model.to(args.device)
-    path_to_save = os.path.join(os.getcwd(), "checkpoints", args.save_as)
+    path_to_save = os.path.join(
+        os.getcwd(), "remove_background", "checkpoints", args.save_as
+    )
 
     best_loss = float("inf")
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
         for ind, data in enumerate(data_loader["train"]):
-            src, tgt = data
+            src, tgt, weights = data
             src = src.to(args.device)
             tgt = tgt.to(args.device)
+            weights = weights.to(args.device)
 
             optimizer.zero_grad()
             logits = model(src)
 
-            loss = loss_fn(logits, tgt)
+            loss = loss_fn(logits, tgt, weights)
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
@@ -68,12 +71,13 @@ def train(
             with torch.no_grad():
                 running_vloss = 0.0
                 for ind, data in enumerate(data_loader["valid"]):
-                    src, tgt = data
+                    src, tgt, weights = data
                     src = src.to(args.device)
                     tgt = tgt.to(args.device)
+                    weights = weights.to(args.device)
 
                     logits = model(src)
-                    loss = loss_fn(logits, tgt)
+                    loss = loss_fn(logits, tgt, weights)
                     # new_metrics: dict[str, torch.Tensor] = BinaryMetrics()(
                     #     y_pred=logits, y_true=tgt
                     # )
@@ -101,19 +105,19 @@ def train(
 
 
 if __name__ == "__main__":
-    parser = get_parser()
+    parser = get_parser("dev")
     args = parser.parse_args()
 
     path_to_train = os.path.join(os.getcwd(), "data", "train_data")
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
     # model = build_model(number_of_classes=1)
-    model = build_iterative_model()
+    model = build_iterative_model(num_iter=4)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
     )
-    loss_fn = ComboLoss(number_of_classes=1)
+    loss_fn = ComboLoss(number_of_classes=2)
 
     if args.resume:
         model = torch.load(
@@ -143,14 +147,14 @@ if __name__ == "__main__":
         augment_factor=args.augment_factor,
     )
     valid_dataset = MagazineCropDataset(
-        split="valid", transforms=build_valid_transform(), augment_factor=1
+        split="valid", transforms=build_scanned_transform(), augment_factor=2
     )
     dataloader = {
         "train": DataLoader(
-            train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=5
+            train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2
         ),
         "valid": DataLoader(
-            valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=5
+            valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2
         ),
     }
 
@@ -161,4 +165,5 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         data_loader=dataloader,
         epochs=args.epochs,
+        valid=True,
     )
