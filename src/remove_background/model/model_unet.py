@@ -32,7 +32,9 @@ class UNet(nn.Module):
 
 
 class IterativeModel(nn.Module):
-    def __init__(self, in_channels: int, backbones, *args, **kwargs):
+    def __init__(
+        self, in_channels: int, backbones, num_class: int = 1, *args, **kwargs
+    ):
         super(IterativeModel, self).__init__(*args, **kwargs)
 
         self._warmup = DoubleConvBlock(
@@ -47,7 +49,7 @@ class IterativeModel(nn.Module):
 
         self._to_logits = nn.Conv2d(
             in_channels=backbones[0].out_channels,
-            out_channels=1,
+            out_channels=num_class,
             kernel_size=1,
             bias=False,
         )
@@ -60,13 +62,13 @@ class IterativeModel(nn.Module):
 
         x = self._warmup(src)
         x = self._backbones[0](x)
-        logits.append(self._to_logits(x).permute(0, 2, 3, 1).contiguous())
+        logits.append(self._to_logits(x))
 
         for backbone in self._backbones[1:]:
             tmp_x = backbone(x)
             x = x + self._residual_blk(tmp_x)
 
-            logits.append(self._to_logits(x).permute(0, 2, 3, 1).contiguous())
+            logits.append(self._to_logits(x))
 
         return logits
 
@@ -86,12 +88,14 @@ def build_unet(
 
 
 def build_iterative_model(
-    embed_dims: list[int] = [32, 64, 128, 256, 512], num_iter: int = 5
+    embed_dims: list[int] = [32, 64, 128, 256, 512],
+    num_iter: int = 5,
+    num_class: int = 3,
 ):
     backbones = [
         build_unet(in_channels=32, embed_dims=embed_dims) for _ in range(num_iter)
     ]
-    model = IterativeModel(in_channels=3, backbones=backbones)
+    model = IterativeModel(in_channels=3, backbones=backbones, num_class=num_class)
 
     return model
 
