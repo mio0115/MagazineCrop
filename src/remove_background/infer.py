@@ -74,7 +74,9 @@ class PredictForeground(object):
         self._verbose = verbose
         self._new_size = new_size
 
-    def __call__(self, image: np.ndarray, is_gray: bool = False) -> np.ndarray:
+    def __call__(
+        self, image: np.ndarray, is_gray: bool = False, return_prob: bool = False
+    ) -> np.ndarray:
         if not is_gray:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -88,6 +90,8 @@ class PredictForeground(object):
             in_image = in_image.to(self._model_device)
             logits = self._model(in_image)[-1]
             is_fg_prob = logits.sigmoid().squeeze().cpu().numpy()
+        if return_prob:
+            return is_fg_prob
         fg_mask = is_fg_prob >= 0.5
 
         # get the largest connected component
