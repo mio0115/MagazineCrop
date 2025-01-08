@@ -120,11 +120,14 @@ class MagazineCropDataset(Dataset):
         if split not in ["train", "valid"]:
             raise ValueError(f"split must be either 'train' or 'valid', got {split}")
 
-        self._path_to_root = os.path.join(
-            os.getcwd(), "data", f"{split}_data", "scanned"
-        )
+        # self._path_to_root = os.path.join(
+        #     os.getcwd(), "data", f"{split}_data", "scanned"
+        # )
+        self._path_to_root = os.path.join(os.getcwd(), "data", "train_data", "scanned")
         with open(
-            os.path.join(self._path_to_root, "annotations", "full_annotations.json"),
+            os.path.join(
+                self._path_to_root, "annotations", f"{split}_annotations.json"
+            ),
             "r",
         ) as fp_annotations:
             self._annotations = json.load(fp_annotations)
