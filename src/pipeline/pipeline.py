@@ -7,7 +7,7 @@ import cv2
 
 from ..remove_background.infer import PredictForeground
 from ..split_page.infer import SplitPage
-from ..fix_distortion.fix_distortion import FixDistortion
+from ..dewarp_curl.dewarp import Dewarp
 from .combination import Combination
 from ..utils.arg_parser import get_parser
 from ..utils.misc import compute_resized_shape
@@ -109,7 +109,7 @@ class MagazineCropPipeline:
             verbose=self._verbose,
             save_mask_fn=self._save_mask_fn,
         )
-        self._fix_distortion = FixDistortion(target_size=self._tmp_shape)
+        self._fix_distortion = Dewarp(target_size=self._tmp_shape)
 
     def process(self, image: np.ndarray):
         """

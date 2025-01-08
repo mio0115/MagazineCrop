@@ -4,7 +4,7 @@ from .perspective_transform_approach import PerspectiveTransformApproach
 from .thin_plate_spline_approach import ThinPlateSplineApproach
 
 
-class FixDistortion(object):
+class Dewarp(object):
     def __init__(self, transform, target_size: tuple[int] = (1024, 1024)):
         self._target_size = target_size
         self._transform = transform
