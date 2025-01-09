@@ -119,7 +119,9 @@ class RandomResizedCrop(object):
         area = height * width
 
         resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
-        resized_tgt, _ = resize_with_aspect_ratio(tgt, target_size=self._size)
+        resized_tgt, _ = resize_with_aspect_ratio(
+            tgt, target_size=self._size, interpolation=cv2.INTER_NEAREST
+        )
         resized_tgt = resized_tgt.clip(max=self._num_cls)
         resized_weights, _ = resize_with_aspect_ratio(weights, target_size=self._size)
 
@@ -147,7 +149,9 @@ class RandomResizedCrop(object):
             new_weights = weights[min_y : min_y + new_height, min_x : min_x + new_width]
 
             resized_img, _ = resize_with_aspect_ratio(new_img, target_size=self._size)
-            resized_tgt, _ = resize_with_aspect_ratio(new_tgt, target_size=self._size)
+            resized_tgt, _ = resize_with_aspect_ratio(
+                new_tgt, target_size=self._size, interpolation=cv2.INTER_NEAREST
+            )
 
             resized_weights, _, pad_coords = resize_with_aspect_ratio(
                 new_weights, target_size=self._size, return_pad=True
@@ -166,21 +170,22 @@ class RandomResizedCrop(object):
 
 
 class Resize(object):
-    def __init__(self, size: tuple[int] = (256, 256), number_of_classes: int = 20):
+    def __init__(self, size: tuple[int] = (256, 256)):
         self._size = size
-        self._num_cls = number_of_classes
 
     def __call__(
-        self, img: np.ndarray, tgt: np.ndarray
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
-        resized_tgt, _ = resize_with_aspect_ratio(tgt, target_size=self._size)
-        resized_tgt = resized_tgt.clip(max=self._num_cls)
+        resized_tgt, _ = resize_with_aspect_ratio(
+            tgt, target_size=self._size, interpolation=cv2.INTER_NEAREST
+        )
+        resized_weights, _ = resize_with_aspect_ratio(weights, target_size=self._size)
 
         if img.ndim > resized_img.ndim:
             resized_img = resized_img[..., None]
 
-        return resized_img, resized_tgt
+        return resized_img, resized_tgt, resized_weights
 
 
 class CenterCrop(object):
@@ -242,8 +247,7 @@ def build_transform():
 def build_valid_transform():
     tr_fn = v2.Compose(
         [
-            Resize(size=(640, 640), number_of_classes=20),
-            MaskToBinary(),
+            Resize(size=(1024, 1024)),
             ArrayToTensor(),
         ]
     )
@@ -256,7 +260,7 @@ def build_scanned_transform():
         [
             Rotate(),
             RandomHorizontalFlip(),
-            RandomResizedCrop(size=(640, 640), scale=(0.25, 1.0)),
+            RandomResizedCrop(size=(640, 640), scale=(0.4, 1.0)),
             ArrayToTensor(),
         ]
     )

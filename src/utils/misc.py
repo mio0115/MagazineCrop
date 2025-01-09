@@ -75,6 +75,7 @@ def resize_with_aspect_ratio(
     tgt: Optional[np.ndarray] = None,
     return_pad: bool = False,
     target_size: tuple[int] = (512, 512),
+    interpolation: Optional[int] = None,
 ) -> tuple[np.ndarray, Optional[np.ndarray]]:
     """
     This function is to resize images with given aspect ratio
@@ -84,10 +85,11 @@ def resize_with_aspect_ratio(
     height, width = img.shape[:2]
     target_width, target_height = target_size
 
-    if height * width <= target_height * target_width:
-        interpolation = cv2.INTER_CUBIC
-    else:
-        interpolation = cv2.INTER_AREA
+    if interpolation is None:
+        if height * width <= target_height * target_width:
+            interpolation = cv2.INTER_CUBIC
+        else:
+            interpolation = cv2.INTER_AREA
 
     aspect_ratio = width / height
     # case 1
