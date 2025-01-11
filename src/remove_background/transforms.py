@@ -103,6 +103,7 @@ class RandomResizedCrop(object):
         scale: tuple[float] = (0.08, 1.0),
         ratio: tuple[float] = (0.75, 1.333),
         not_crop_prob: float = 0.2,
+        crop_margin_prob: float = 0.3,
         number_of_classes: int = 20,
     ):
         self._size = size
@@ -111,6 +112,7 @@ class RandomResizedCrop(object):
         self._num_cls = number_of_classes
         self._attempt_limit = 50
         self._not_crop_prob = not_crop_prob
+        self._crop_margin_prob = crop_margin_prob
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
@@ -125,11 +127,40 @@ class RandomResizedCrop(object):
         resized_tgt = resized_tgt.clip(max=self._num_cls)
         resized_weights, _ = resize_with_aspect_ratio(weights, target_size=self._size)
 
-        if np.random.rand() < self._not_crop_prob:
+        prob = np.random.rand()
+        if prob < self._not_crop_prob:
             # do not crop
             if img.ndim > resized_img.ndim:
                 resized_img = resized_img[..., None]
             return resized_img, resized_tgt, resized_weights
+        elif prob < self._not_crop_prob + self._crop_margin_prob:
+            for _ in range(self._attempt_limit):
+                # crop with margin
+                min_x = np.random.randint(0, width - self._size[1])
+                min_y = np.random.randint(0, height - self._size[0])
+                mask = np.zeros_like(tgt, dtype=np.int32)
+                mask[min_y : min_y + self._size[0], min_x : min_x + self._size[1]] = 1
+
+                if np.sum(mask * tgt) / (self._size[0] * self._size[1]) > 0.8:
+                    continue
+                if np.sum(mask * tgt) / (self._size[0] * self._size[1]) < 0.2:
+                    continue
+
+                new_img = img[
+                    min_y : min_y + self._size[0], min_x : min_x + self._size[1], :
+                ].copy()
+                new_tgt = tgt[
+                    min_y : min_y + self._size[0], min_x : min_x + self._size[1]
+                ].copy()
+                new_weights = weights[
+                    min_y : min_y + self._size[0], min_x : min_x + self._size[1]
+                ].copy()
+
+                if img.ndim > new_img.ndim:
+                    new_img = new_img[..., None]
+                break
+
+            return new_img, new_tgt, new_weights
 
         for _ in range(self._attempt_limit):
             scale = np.random.uniform(self._scale[0], self._scale[1])
@@ -235,7 +266,7 @@ def build_transform():
         [
             ImageToArray(normalize=False),
             RandomHorizontalFlip(),
-            RandomResizedCrop(size=(512, 512)),
+            RandomResizedCrop(size=(1024, 1024)),
             MaskToBinary(),
             ArrayToTensor(),
         ]
@@ -260,7 +291,7 @@ def build_scanned_transform():
         [
             Rotate(),
             RandomHorizontalFlip(),
-            RandomResizedCrop(size=(640, 640), scale=(0.4, 1.0)),
+            RandomResizedCrop(size=(640, 640), scale=(0.25, 1.0), crop_margin_prob=0.3),
             ArrayToTensor(),
         ]
     )
