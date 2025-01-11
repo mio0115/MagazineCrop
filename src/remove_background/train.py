@@ -1,4 +1,5 @@
 import os
+import time
 
 import torch
 from torch import nn
@@ -33,11 +34,12 @@ def train(
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 25, 30])
     model = model.to(args.device)
     path_to_save = os.path.join(
-        os.getcwd(), "remove_background", "checkpoints", args.save_as
+        os.getcwd(), "src", "remove_background", "checkpoints", args.save_as
     )
 
     best_loss = float("inf")
     for epoch in range(epochs):
+        epoch_start = time.time()
         model.train()
         running_loss = 0.0
         for ind, data in enumerate(data_loader["train"]):
@@ -99,9 +101,14 @@ def train(
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
                     torch.save(model, path_to_save)
-                    output_avg_vloss += "\tNew best loss, Saved!"
+                    output_avg_vloss += "\tNew Record, Saved!"
                 print(output_avg_vloss)
                 print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
+
+        epoch_end = time.time()
+        min_t = (epoch_end - epoch_start) // 60
+        sec_t = (epoch_end - epoch_start) % 60
+        print(f"\t{'Epoch Time':<11}: {min_t} min(s) {sec_t} sec(s)\n")
 
 
 if __name__ == "__main__":
@@ -111,13 +118,12 @@ if __name__ == "__main__":
     path_to_train = os.path.join(os.getcwd(), "data", "train_data")
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
-    # model = build_model(number_of_classes=1)
-    model = build_iterative_model(num_iter=4)
+    model = build_iterative_model(num_iter=4, num_class=1)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
     )
-    loss_fn = ComboLoss(number_of_classes=2)
+    loss_fn = ComboLoss(number_of_classes=1)
 
     if args.resume:
         model = torch.load(
@@ -147,14 +153,14 @@ if __name__ == "__main__":
         augment_factor=args.augment_factor,
     )
     valid_dataset = MagazineCropDataset(
-        split="valid", transforms=build_scanned_transform(), augment_factor=2
+        split="valid", transforms=build_valid_transform(), augment_factor=2
     )
     dataloader = {
         "train": DataLoader(
-            train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2
+            train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=3
         ),
         "valid": DataLoader(
-            valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2
+            valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=3
         ),
     }
 
