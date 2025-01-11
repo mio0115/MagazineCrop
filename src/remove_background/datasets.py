@@ -66,12 +66,11 @@ def set_weights_from_resized_contours(
         cv2.contourArea(contour),
         cv2.contourArea(larger_contour),
     )
+    outside_area = larger_area - normal_area
 
-    rest_ratio = (image_shape[0] * image_shape[1] - larger_area) / (
-        image_shape[0] * image_shape[1] - normal_area
-    )
+    rest_ratio = outside_area / (image_shape[0] * image_shape[1] - normal_area)
     edge_outside_ratio = 1 - rest_ratio
-    edge_inner_ratio = smaller_area / normal_area
+    edge_inner_ratio = 1 - smaller_area / normal_area
     edge_outer_ratio = 1 - edge_inner_ratio
 
     # Create masks for smaller and larger contours
@@ -94,7 +93,7 @@ def set_weights_from_resized_contours(
     weight_map[mask_normal > 0] = edge_outer_ratio  # Outer region
     weight_map[mask_smaller > 0] = edge_inner_ratio  # Inner region
 
-    return weight_map
+    return weight_map / 2
 
 
 class MyVOCSegmentation(tv_datasets.VOCSegmentation):
@@ -135,12 +134,13 @@ class MagazineCropDataset(Dataset):
         self._keys = list(self._annotations.keys())
         self._orig_len = len(self._keys)
         self._augment_factor = augment_factor
+        self._split = split
 
         self._labels = {
-            "background": 2,
-            "foreground": 0,
-            "bookmark": 1,
-            "bookmark_mask": 2,
+            "background": 0,
+            "foreground": 1,
+            "bookmark": 0,
+            "bookmark_mask": 0,
         }
         self._label_order = ["bookmark", "bookmark_mask", "foreground"]
 
@@ -150,7 +150,10 @@ class MagazineCropDataset(Dataset):
         return self._augment_factor * self._orig_len
 
     def _generate_labels_and_weights(self, polygons, height: int, width: int):
-        labels = np.zeros((height, width), dtype=np.uint8)
+        if self._labels["background"] == 0:
+            labels = np.zeros((height, width), dtype=np.uint8)
+        else:
+            labels = np.ones((height, width), dtype=np.uint8)
 
         cls_polygons = dict.fromkeys(self._label_order, [])
         for polygon in polygons:
@@ -172,12 +175,15 @@ class MagazineCropDataset(Dataset):
                 color=self._labels[curr_label],
                 thickness=-1,
             )
-        weights = set_weights_from_resized_contours(
-            image_shape=(height, width),
-            contour=cls_polygons["foreground"][0],
-            inner_ratio=0.9,
-            outer_ratio=1.1,
-        )
+        if self._split == "valid":
+            weights = set_weights_from_resized_contours(
+                image_shape=(height, width),
+                contour=cls_polygons["foreground"][0],
+                inner_ratio=0.9,
+                outer_ratio=1.1,
+            )
+        else:
+            weights = np.ones_like(labels)
 
         return labels, weights
 
