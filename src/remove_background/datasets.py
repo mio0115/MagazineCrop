@@ -138,8 +138,8 @@ class MagazineCropDataset(Dataset):
 
         self._labels = {
             "background": 0,
-            "foreground": 1,
-            "bookmark": 0,
+            "foreground": 2,
+            "bookmark": 1,
             "bookmark_mask": 0,
         }
         self._label_order = ["bookmark", "bookmark_mask", "foreground"]
