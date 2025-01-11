@@ -71,7 +71,7 @@ class MultiClassDiceLoss(nn.Module):
                 continue
 
             loss = self._bin_dice_loss(
-                conf_scores[:, cls_ind], oh_target[:, cls_ind], weights
+                conf_scores[..., cls_ind], oh_target[..., cls_ind], weights
             )
             losses.append(loss)
 
@@ -141,7 +141,7 @@ class ComboLoss(nn.Module):
         self._binary = number_of_classes == 1
 
         if number_of_classes == 1:
-            self._ce_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))
+            self._ce_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(1.5))
         else:
             self._ce_loss = WeightedCrossEntropyLoss()
 
@@ -159,8 +159,9 @@ class ComboLoss(nn.Module):
 
         ce_loss, dice_loss = [], []
         for logit in logits:
-            flatten_logits = logit.flatten(1, 2)
-            flatten_targets = targets.flatten(1, 2)
+            logit = logit.permute(0, 2, 3, 1)  # to (bs, h, w, cls)
+            flatten_logits = logit.flatten(1, 2)  # to (bs, h*w, cls)
+            flatten_targets = targets.flatten(1, 2)  # to (bs, h*w, cls)
 
             if self._binary:
                 ce_loss.append(
@@ -168,7 +169,7 @@ class ComboLoss(nn.Module):
                 )
             else:
                 ce_loss.append(self._ce_loss(logit.squeeze(dim=-1), targets, weights))
-            dice_loss.append(self._dice_loss(logit.squeeze(dim=-1), targets, weights))
+            dice_loss.append(self._dice_loss(logit, targets, weights))
 
         ce_loss = torch.stack(ce_loss).mean()
         dice_loss = torch.stack(dice_loss).mean()
