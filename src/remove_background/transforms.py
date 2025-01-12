@@ -46,27 +46,60 @@ class ColorJitter(object):
 
 
 class Rotate(object):
+    """
+    A transform that rotates the input image, target mask, and weights
+    by a random angle within a specified range.
+    """
+
     def __init__(self, random_angle_range=(-20, 20)):
+        """
+        Args:
+            random_angle_range (tuple[int, int]): A tuple (min_angle, max_angle)
+                specifying the inclusive range of angles in degrees from which
+                we randomly choose for rotation.
+        """
         self._random_angle_range = random_angle_range
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        # angle in degrees
+        """
+        Applies a random rotation to the image, target mask, and weights.
+
+        Args:
+            img (np.ndarray): Input image array of shape (H, W) or (H, W, C).
+            tgt (np.ndarray): Target mask array of shape (H, W).
+            weights (np.ndarray): Weights mask of shape (H, W).
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]: The rotated image,
+            target, and weights arrays, with the same shapes as the inputs.
+        """
+        # Pick a random rotation angle (in degrees) from the specified range.
         angle = np.random.randint(*self._random_angle_range)
+
+        # Get image dimensions and compute center (for rotation pivot).
         height, width = img.shape[:2]
         center = (width // 2, height // 2)
-        # rotate the image with (intersection_x, height//2) as the center
+
+        # Create a rotation matrix around the center with the specified angle.
         rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 
+        # Rotate the image with (intersection_x, height//2) as the center
         rotated_img = cv2.warpAffine(img, rot_mat, (width, height))
 
+        # Rotate the target mask with nearest-neighbor to preserve class labels.
         rotated_tgt = cv2.warpAffine(
             tgt, rot_mat, (width, height), flags=cv2.INTER_NEAREST
         )
+
+        # Rotate the weights mask with area interpolation to preserve weights.
         rotated_weights = cv2.warpAffine(
             weights, rot_mat, (width, height), flags=cv2.INTER_AREA
         )
+
+        # If the original image was (H, W, 1) and after rotation is (H, W),
+        # we add back a dummy channel to match dimensions if needed.
         if img.ndim > rotated_img.ndim:
             rotated_img = rotated_img[..., None]
 
@@ -74,13 +107,37 @@ class Rotate(object):
 
 
 class RandomHorizontalFlip(object):
+    """
+    A transform that randomly flips the image, target mask, and weights
+    horizontally (left-right) with a given probability.
+    """
+
     def __init__(self, not_flip_prob=0.5):
+        """
+        Args:
+            not_flip_prob (float): The probability of NOT flipping the image.
+                If a random number is >= this value, we perform the flip.
+        """
         self._not_flip_prob = not_flip_prob
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Flips the input arrays horizontally with (1 - not_flip_prob) chance.
+
+        Args:
+            img (np.ndarray): Input image array.
+            tgt (np.ndarray): Target mask array.
+            weights (np.ndarray): Weights mask array.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]: The flipped (or unchanged)
+            image, target, and weights arrays.
+        """
+        # Draw a random number in [0,1). If it's >= not_flip_prob, we flip.
         if np.random.rand() >= self._not_flip_prob:
+            # Flip along axis=1 (left-right flip).
             img = np.flip(img, axis=1)
             tgt = np.flip(tgt, axis=1)
             weights = np.flip(weights, axis=1)
@@ -89,11 +146,28 @@ class RandomHorizontalFlip(object):
 
 
 class PrintShape(object):
+    """
+    A debugging transform that prints the shapes of the image and target
+    during the pipeline.
+    """
+
     def __call__(
-        self, img: np.ndarray, tgt: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
-        print(img.shape, tgt.shape)
-        return img, tgt
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Prints the shapes of the given arrays, then returns them unchanged.
+
+        Args:
+            img (np.ndarray): Image array.
+            tgt (np.ndarray): Target mask array.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: The same (img, tgt).
+        """
+        print(
+            f"image shape: {img.shape}, target shape: {tgt.shape}, weights shape: {weights.shape}"
+        )
+        return img, tgt, weights
 
 
 def crop_arrays(coords: tuple[int], *arrays):
@@ -206,20 +280,21 @@ class RandomResizedCrop(object):
         Returns None if no successful crop within attempt_limit.
         """
         height, width, _ = img.shape
+        crop_size = tuple([l * 2 for l in self._size])
 
         for _ in range(self._attempt_limit):
             # Random top-left inside the original image
-            min_y = np.random.randint(0, height - self._size[0])
-            min_x = np.random.randint(0, width - self._size[1])
+            min_y = np.random.randint(0, height - crop_size[0])
+            min_x = np.random.randint(0, width - crop_size[1])
 
             # Create a mask with 1 where we plan to crop
             trial_mask = np.zeros_like(tgt, dtype=np.int32)
-            trial_mask[min_y : min_y + self._size[0], min_x : min_x + self._size[1]] = 1
+            trial_mask[min_y : min_y + crop_size[0], min_x : min_x + crop_size[1]] = 1
 
             # Heuristic checks on how much "foreground" is inside or outside
             # In your original code: "if np.sum(mask * tgt) / area_in_crop > 0.8" => continue
             # We'll keep the same logic:
-            area_in_crop = self._size[0] * self._size[1]
+            area_in_crop = crop_size[0] * crop_size[1]
             overlap = np.sum(trial_mask * tgt) / float(area_in_crop)
 
             if overlap > 0.8 or overlap < 0.2:
@@ -227,8 +302,8 @@ class RandomResizedCrop(object):
                 continue
 
             # If we get here, we accept this crop
-            crop_box = (min_y, min_x, self._size[0], self._size[1])
-            return self._crop_and_resize(img, tgt, weights, crop_box)
+            crop_box = (min_y, min_x, crop_size[0], crop_size[1])
+            return self._crop_and_resize(img, tgt, weights, crop_box, where="margin")
         return None
 
     def _try_crop_bookmark(
@@ -243,6 +318,7 @@ class RandomResizedCrop(object):
         Returns None if no successful crop within attempt_limit.
         """
         height, width, _ = img.shape
+        crop_size = tuple([l * 2 for l in self._size])
         # Check if bookmark_label is even present
         bookmark_mask = tgt == self._bookmark_label
         bookmark_area = bookmark_mask.sum()
@@ -250,12 +326,12 @@ class RandomResizedCrop(object):
             return None  # No bookmark => can't do this mode
 
         for _ in range(self._attempt_limit):
-            min_y = np.random.randint(0, height - self._size[0])
-            min_x = np.random.randint(0, width - self._size[1])
+            min_y = np.random.randint(0, height - crop_size[0])
+            min_x = np.random.randint(0, width - crop_size[1])
 
             # We'll see how much of the bookmark falls into this crop
             trial_mask = np.zeros_like(tgt, dtype=np.int32)
-            trial_mask[min_y : min_y + self._size[0], min_x : min_x + self._size[1]] = 1
+            trial_mask[min_y : min_y + crop_size[0], min_x : min_x + crop_size[1]] = 1
 
             overlap_bookmark = np.sum(trial_mask * bookmark_mask) / float(bookmark_area)
 
@@ -264,8 +340,8 @@ class RandomResizedCrop(object):
                 # Not enough bookmark => skip
                 continue
 
-            crop_box = (min_y, min_x, self._size[0], self._size[1])
-            return self._crop_and_resize(img, tgt, weights, crop_box)
+            crop_box = (min_y, min_x, crop_size[0], crop_size[1])
+            return self._crop_and_resize(img, tgt, weights, crop_box, where="bookmark")
         return None
 
     def _try_random_scale_crop(
@@ -296,7 +372,9 @@ class RandomResizedCrop(object):
             min_y = np.random.randint(0, height - new_height)
             min_x = np.random.randint(0, width - new_width)
             crop_box = (min_y, min_x, new_height, new_width)
-            return self._crop_and_resize(img, tgt, weights, crop_box)
+            return self._crop_and_resize(
+                img, tgt, weights, crop_box, where="random_scale"
+            )
 
         # If all attempts fail, just do a no-crop fallback
         return self._no_crop(img, tgt, weights)
@@ -307,6 +385,7 @@ class RandomResizedCrop(object):
         tgt: np.ndarray,
         weights: np.ndarray,
         crop_box: tuple[int, int, int, int],
+        where: str = "bookmark",
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Crops img, tgt, weights using `crop_box` and then resizes them to self._size.
@@ -370,12 +449,33 @@ class RandomResizedCrop(object):
 
 
 class Resize(object):
+    """
+    A transform that resizes the image, target mask, and weights array
+    to a specified size (height, width) while preserving aspect ratio
+    via a custom resize function.
+    """
+
     def __init__(self, size: tuple[int] = (256, 256)):
+        """
+        Args:
+            size (tuple[int, int]): The target (height, width) for resizing.
+        """
         self._size = size
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Resizes the image, target mask, and weights to self._size.
+
+        Args:
+            img (np.ndarray): Input image array of shape (H, W) or (H, W, C).
+            tgt (np.ndarray): Target mask array of shape (H, W).
+            weights (np.ndarray): Weights mask array of shape (H, W).
+
+        Returns:
+            (resized_img, resized_tgt, resized_weights): Arrays resized to self._size.
+        """
         resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
         resized_tgt, _ = resize_with_aspect_ratio(
             tgt, target_size=self._size, interpolation=cv2.INTER_NEAREST
@@ -389,12 +489,32 @@ class Resize(object):
 
 
 class CenterCrop(object):
+    """
+    A transform that performs a center crop of the image and target mask
+    to a specified (height, width).
+    """
+
     def __init__(self, size: tuple[int] = (224, 224)):
+        """
+        Args:
+            size (tuple[int, int]): The (height, width) for the cropped output.
+        """
         self._size = size
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Crops the image and target mask at the center to self._size.
+
+        Args:
+            img (np.ndarray): Input image array of shape (H, W, C).
+            tgt (np.ndarray): Target mask array of shape (H, W).
+
+        Returns:
+            (cropped_img, cropped_tgt): Center-cropped arrays
+            of shapes (th, tw, C) and (th, tw) respectively.
+        """
         h, w, _ = img.shape
         th, tw = self._size
 
@@ -405,9 +525,27 @@ class CenterCrop(object):
 
 
 class ArrayToTensor(object):
+    """
+    A transform that converts numpy arrays (image, target, and weights)
+    into PyTorch tensors. It also scales the image to [0,1] by dividing by 255.
+    """
+
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            img (np.ndarray): Image array of shape (H, W, C) in [0..255].
+            tgt (np.ndarray): Target mask array of shape (H, W).
+            weights (np.ndarray): Weights array of shape (H, W).
+
+        Returns:
+            (img_tensor, tgt_tensor, weights_tensor):
+                - img_tensor shape: (C, H, W), float32 in [0, 1].
+                - tgt_tensor shape: (H, W), float32.
+                - weights_tensor shape: (H, W), float32.
+        """
+        # Convert from numpy arrays to PyTorch tensors
         img = torch.from_numpy(img).float() / 255.0
         tgt = torch.from_numpy(tgt).float()
         weights = torch.from_numpy(weights).float()
@@ -417,15 +555,36 @@ class ArrayToTensor(object):
 
 
 class MaskToBinary(object):
+    """
+    A transform that converts the target mask from multi-class or
+    multi-label into a binary (foreground vs. background) mask.
+    """
+
     def __init__(self, foreground_label: int = 1, *args, **kwargs):
+        """
+        Args:
+            foreground_label (int): The class ID that should be considered 'foreground'.
+        """
         super(MaskToBinary, self).__init__(*args, **kwargs)
         self._foreground_label = foreground_label
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        # convert to binary mask
-        # 0: background, 1: foreground
+        """
+        Args:
+            img (np.ndarray): Image array of shape (H, W, C) or (H, W).
+            tgt (np.ndarray): Target mask with integer labels, shape (H, W).
+            weights (np.ndarray): Weights array, shape (H, W).
+
+        Returns:
+            (img, binary_tgt, weights):
+                - The original image unchanged.
+                - A binary mask (0 or 1) where 1 indicates `foreground_label` pixels.
+                - The original weights unchanged.
+        """
+        # Convert to binary mask
+        # Set to 1 if the target is the foreground label, 0 otherwise
         tgt = (tgt == self._foreground_label).astype(np.int64)
 
         return img, tgt, weights
@@ -465,9 +624,9 @@ def build_scanned_transform():
             RandomResizedCrop(
                 size=(640, 640),
                 scale=(0.25, 1.0),
+                not_crop_prob=0.1,
                 crop_margin_prob=0.3,
-                crop_bookmark_prob=0.2,
-                not_crop_prob=0.2,
+                crop_bookmark_prob=0.3,
                 bookmark_label=1,
             ),
             MaskToBinary(foreground_label=2),
