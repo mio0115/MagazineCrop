@@ -114,10 +114,10 @@ def dev_parser():
         help="device to train the model on",
     )
     training_group.add_argument(
-        "--path-to-save",
+        "-ckpt-dir" "--checkpoint-dir",
         type=str,
         default="./checkpoints",
-        dest="path_to_save",
+        dest="checkpoint_dir",
         help="path to save the model",
     )
     training_group.add_argument(

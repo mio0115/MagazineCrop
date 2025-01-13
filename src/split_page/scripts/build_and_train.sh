@@ -18,6 +18,7 @@ CLS_NUM=20
 RESUME_FROM="sp_pg_model.pth"
 SHARED_MEM_SIZE="200g"
 DATALOADER_WORKERS=3
+CKPT_DIR="./checkpoints"
 TRAIN=""
 RESUME=""
 
@@ -39,6 +40,8 @@ while [[ "$#" -gt 0 ]]; do
         --train) TRAIN="--train" ;;
         --resume) RESUME="--resume" ;;
         --dataloader-workers) DATALOADER_WORKERS="$2"; shift;;
+        -ckpt-dir) CKPT_DIR="$2"; shift;;
+        --checkpoint-dir) CKPT_DIR="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -72,6 +75,7 @@ docker run --rm -it \
             --save-as=${SAVE_AS} \
             --resume-from=${RESUME_FROM} \
             --dataloader-workers=${DATALOADER_WORKERS} \
+            --checkpoint-dir=${CKPT_DIR} \
             ${TRAIN} \
             ${RESUME} \
 

@@ -34,7 +34,7 @@ def train(
     print("Training model...")
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 25, 30])
     model = model.to(args.device)
-    path_to_save = os.path.join(args.path_to_save, args.save_as)
+    path_to_save = os.path.join(args.checkpoint_dir, args.save_as)
 
     best_loss = float("inf")
     for epoch in range(epochs):
@@ -128,8 +128,7 @@ if __name__ == "__main__":
     if args.resume:
         model = torch.load(
             os.path.join(
-                os.getcwd(),
-                "checkpoints",
+                args.checkpoint_dir,
                 args.resume_from,
             ),
             weights_only=False,
