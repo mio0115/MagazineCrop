@@ -1,0 +1,14 @@
+{
+  "include":["src"],
+  "exclude":["**/__pycache__"],
+  "pythonVersion":"3.12",
+  "pythonPlatform":"Linux",
+  "executionEnvironments":[
+    {
+      "venvPath": "/home/daniel/miniconda3/envs/",
+      "venv": "mag_crop",
+      "pythonVersion": "3.12",
+      "pythonPlatform": "Linux"
+    }
+  ]
+}
