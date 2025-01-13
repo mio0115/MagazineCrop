@@ -17,6 +17,7 @@ SAVE_AS="rm_bg_unetpp.pth"
 CLS_NUM=20
 SHARED_MEM_SIZE="200g"
 RESUME_FROM="rm_bg_unetpp_pretrained.pth"
+DATALOADER_WORKERS=3
 TRAIN=""
 RESUME=""
 
@@ -37,6 +38,7 @@ while [[ "$#" -gt 0 ]]; do
         --resume-from) RESUME_FROM="$2"; shift;;
         --train) TRAIN="--train" ;;
         --resume) RESUME="--resume" ;;
+        --dataloader-workers) DATALOADER_WORKERS="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -69,6 +71,7 @@ docker run --rm -it \
             --device=${DEVICE} \
             --save-as=${SAVE_AS} \
             --resume-from=${RESUME_FROM} \
+            --dataloader-workers=${DATALOADER_WORKERS} \
             ${TRAIN} \
             ${RESUME} \
 

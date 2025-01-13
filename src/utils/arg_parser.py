@@ -122,6 +122,13 @@ def dev_parser():
     training_group.add_argument(
         "--train", action="store_true", dest="train", help="train the model"
     )
+    training_group.add_argument(
+        "--dataloader-workers",
+        type=int,
+        default=3,
+        dest="dataloader_workers",
+        help="number of workers for dataloader",
+    )
     training_group.add_argument("--resume", action="store_true", dest="resume")
     training_group.add_argument(
         "--resume-from",

@@ -159,10 +159,16 @@ if __name__ == "__main__":
     )
     dataloader = {
         "train": DataLoader(
-            train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=3
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.dataloader_workers,
         ),
         "valid": DataLoader(
-            valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=3
+            valid_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.dataloader_workers,
         ),
     }
 

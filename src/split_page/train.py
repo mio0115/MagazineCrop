@@ -119,13 +119,13 @@ if __name__ == "__main__":
             train_dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            num_workers=10,
+            num_workers=args.dataloader_workers,
         ),
         "valid": DataLoader(
             valid_dataset,
             batch_size=args.batch_size,
             shuffle=False,
-            num_workers=10,
+            num_workers=args.dataloader_workers,
         ),
     }
 

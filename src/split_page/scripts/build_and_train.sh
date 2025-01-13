@@ -17,6 +17,7 @@ SAVE_AS="sp_pg_model.pth"
 CLS_NUM=20
 RESUME_FROM="sp_pg_model.pth"
 SHARED_MEM_SIZE="200g"
+DATALOADER_WORKERS=3
 TRAIN=""
 RESUME=""
 
@@ -37,6 +38,7 @@ while [[ "$#" -gt 0 ]]; do
         --shm) SHARED_MEM_SIZE="$2"; shift;;
         --train) TRAIN="--train" ;;
         --resume) RESUME="--resume" ;;
+        --dataloader-workers) DATALOADER_WORKERS="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -69,6 +71,7 @@ docker run --rm -it \
             --device=${DEVICE} \
             --save-as=${SAVE_AS} \
             --resume-from=${RESUME_FROM} \
+            --dataloader-workers=${DATALOADER_WORKERS} \
             ${TRAIN} \
             ${RESUME} \
 
