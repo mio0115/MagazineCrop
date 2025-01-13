@@ -114,6 +114,13 @@ def dev_parser():
         help="device to train the model on",
     )
     training_group.add_argument(
+        "--path-to-save",
+        type=str,
+        default="./checkpoints",
+        dest="path_to_save",
+        help="path to save the model",
+    )
+    training_group.add_argument(
         "--save-as", type=str, default="rm_bg_unetpp.pth", dest="save_as"
     )
     training_group.add_argument(
