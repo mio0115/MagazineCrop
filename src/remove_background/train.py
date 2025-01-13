@@ -6,7 +6,8 @@ from torch import nn
 from torch.utils.data import DataLoader
 import numpy as np
 
-from .model.model_unet import build_iterative_model
+# from .model.model_unet import build_iterative_model
+from .model.model_unet_pp import build_iterative_model
 from .datasets import MyVOCSegmentation, MagazineCropDataset
 from .transforms import (
     build_transform,
@@ -107,7 +108,7 @@ def train(
 
         epoch_end = time.time()
         min_t = (epoch_end - epoch_start) // 60
-        sec_t = (epoch_end - epoch_start) % 60
+        sec_t = int((epoch_end - epoch_start) % 60)
         print(f"\t{'Epoch Time':<11}: {min_t} min(s) {sec_t} sec(s)\n")
 
 
@@ -118,7 +119,8 @@ if __name__ == "__main__":
     path_to_train = os.path.join(os.getcwd(), "data", "train_data")
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
-    model = build_iterative_model(num_iter=4, num_class=1)
+    # model = build_iterative_model(num_iter=3, num_class=1)
+    model = build_iterative_model()
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
