@@ -73,7 +73,7 @@ def build_iterative_model(embed_dims: list[int] = [32, 64, 128, 256, 512]):
         build_unetpp(in_channels=32, embed_dims=embed_dims[:ind])
         for ind in range(len(embed_dims), 1, -1)
     ]
-    model = IterativeModel(in_channels=1, backbones=backbones)
+    model = IterativeModel(in_channels=4, backbones=backbones)
 
     return model
 

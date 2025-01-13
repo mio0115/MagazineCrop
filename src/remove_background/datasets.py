@@ -119,9 +119,6 @@ class MagazineCropDataset(Dataset):
         if split not in ["train", "valid"]:
             raise ValueError(f"split must be either 'train' or 'valid', got {split}")
 
-        # self._path_to_root = os.path.join(
-        #     os.getcwd(), "data", f"{split}_data", "scanned"
-        # )
         self._path_to_root = os.path.join(os.getcwd(), "data", "train_data", "scanned")
         with open(
             os.path.join(
@@ -150,12 +147,9 @@ class MagazineCropDataset(Dataset):
         return self._augment_factor * self._orig_len
 
     def _generate_labels_and_weights(self, polygons, height: int, width: int):
-        if self._labels["background"] == 0:
-            labels = np.zeros((height, width), dtype=np.uint8)
-        else:
-            labels = np.ones((height, width), dtype=np.uint8)
+        labels = np.zeros((height, width), dtype=np.uint8)
 
-        cls_polygons = dict.fromkeys(self._label_order, [])
+        cls_polygons = {k: [] for k in self._label_order}
         for polygon in polygons:
             label = polygon["label"]
             if label not in self._label_order:
@@ -195,7 +189,11 @@ class MagazineCropDataset(Dataset):
         pil_image = Image.open(
             os.path.join(self._path_to_root, annotation["imagePath"])
         ).convert("RGB")
-        image = np.array(pil_image, dtype=np.uint8)[..., ::-1].copy()
+        orig_image = np.array(pil_image, dtype=np.uint8)[..., ::-1].copy()
+        gray_image = cv2.cvtColor(orig_image, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.equalizeHist(gray_image)[..., None]
+
+        image = np.concatenate([orig_image, gray_image], axis=-1)
 
         labels, weights = self._generate_labels_and_weights(
             polygons=annotation["shapes"],

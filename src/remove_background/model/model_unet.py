@@ -95,7 +95,7 @@ def build_iterative_model(
     backbones = [
         build_unet(in_channels=32, embed_dims=embed_dims) for _ in range(num_iter)
     ]
-    model = IterativeModel(in_channels=3, backbones=backbones, num_class=num_class)
+    model = IterativeModel(in_channels=4, backbones=backbones, num_class=num_class)
 
     return model
 
