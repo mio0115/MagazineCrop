@@ -22,19 +22,19 @@ RESUME=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --learning_rate) LEARNING_RATE="$2"; shift ;;
+        --learning-rate) LEARNING_RATE="$2"; shift ;;
         -lr) LEARNING_RATE="$2"; shift ;;
-        --lr_backbone) LEARNING_RATE_BACKBONE="$2"; shift;;
-        --augment_factor) AUGMENT_FACTOR="$2"; shift ;;
+        --lr-backbone) LEARNING_RATE_BACKBONE="$2"; shift;;
+        --augment-factor) AUGMENT_FACTOR="$2"; shift ;;
         --epochs) EPOCHS="$2"; shift ;;
         -e) EPOCHS="$2"; shift ;;
-        --batch_size) BATCH_SIZE="$2"; shift ;;
+        --batch-size) BATCH_SIZE="$2"; shift ;;
         -bs) BATCH_SIZE="$2"; shift;;
         --shm) SHARED_MEM_SIZE="$2"; shift;;
         --resume) RESUME="--resume" ;;
         --device) DEVICE="$2"; shift;;
-        --save_as) SAVE_AS="$2"; shift;;
-        --resume_from) RESUME_FROM="$2"; shift;;
+        --save-as) SAVE_AS="$2"; shift;;
+        --resume-from) RESUME_FROM="$2"; shift;;
         --train) TRAIN="--train" ;;
         --resume) RESUME="--resume" ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
