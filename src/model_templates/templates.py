@@ -164,10 +164,9 @@ class FeaturePyramidNetwork(nn.Module):
 def build_unetpp(
     in_channels: int = 3,
     embed_dims: list[int] = [32, 64, 128, 256, 512],
-    output_raw: bool = False,
 ) -> UNetPlusPlus:
     contract_block = ContractBlock(input_dim=in_channels, embed_dims=embed_dims)
-    model = UNetPlusPlus(contract_block, embed_dims, output_raw=output_raw)
+    model = UNetPlusPlus(contract_block, embed_dims)
 
     return model
 
