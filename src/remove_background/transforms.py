@@ -122,7 +122,7 @@ class RandomHorizontalFlip(object):
 
     def __call__(
         self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Flips the input arrays horizontally with (1 - not_flip_prob) chance.
 
@@ -141,6 +141,35 @@ class RandomHorizontalFlip(object):
             img = np.flip(img, axis=1)
             tgt = np.flip(tgt, axis=1)
             weights = np.flip(weights, axis=1)
+
+        return img, tgt, weights
+
+
+class RandomVerticalFlip(object):
+    """
+    A transform that randomly flips the image, target mask, and weights
+    vertically (up-down) with a given probability.
+    """
+
+    def __init__(self, not_flip_prob=0.5):
+        """
+        Args:
+            not_flip_prob (float): The probability of NOT flipping the image.
+                If a random number is >= this value, we perform the flip.
+        """
+        self._not_flip_prob = not_flip_prob
+
+    def __call__(
+        self, img: np.ndarray, tgt: np.ndarray, weights: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Flips the input arrays vertically with (1 - not_flip_prob) chance.
+        """
+        # Draw a random number in [0,1). If it's >= not_flip_prob, we flip.
+        if np.random.rand() >= self._not_flip_prob:
+            img = np.flip(img, axis=0)
+            tgt = np.flip(tgt, axis=0)
+            weights = np.flip(weights, axis=0)
 
         return img, tgt, weights
 
@@ -280,9 +309,10 @@ class RandomResizedCrop(object):
         Returns None if no successful crop within attempt_limit.
         """
         height, width, _ = img.shape
-        crop_size = tuple([l * 2 for l in self._size])
 
         for _ in range(self._attempt_limit):
+            scale = np.random.uniform(low=1.5, high=3.0)
+            crop_size = tuple([int(l * scale) for l in self._size])
             # Random top-left inside the original image
             min_y = np.random.randint(0, height - crop_size[0])
             min_x = np.random.randint(0, width - crop_size[1])
@@ -318,7 +348,6 @@ class RandomResizedCrop(object):
         Returns None if no successful crop within attempt_limit.
         """
         height, width, _ = img.shape
-        crop_size = tuple([l * 2 for l in self._size])
         # Check if bookmark_label is even present
         bookmark_mask = tgt == self._bookmark_label
         bookmark_area = bookmark_mask.sum()
@@ -326,6 +355,9 @@ class RandomResizedCrop(object):
             return None  # No bookmark => can't do this mode
 
         for _ in range(self._attempt_limit):
+            scale = np.random.uniform(low=1.0, high=2.5)
+            crop_size = tuple([int(l * scale) for l in self._size])
+
             min_y = np.random.randint(0, height - crop_size[0])
             min_x = np.random.randint(0, width - crop_size[1])
 
@@ -620,7 +652,8 @@ def build_scanned_transform():
     tr_fn = v2.Compose(
         [
             Rotate(),
-            RandomHorizontalFlip(),
+            RandomHorizontalFlip(not_flip_prob=0.6),
+            RandomVerticalFlip(not_flip_prob=0.9),
             RandomResizedCrop(
                 size=(640, 640),
                 scale=(0.25, 1.0),
