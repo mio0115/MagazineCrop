@@ -6,4 +6,5 @@ data/
 test.py
 *.png
 
+*.txt
 script.py
