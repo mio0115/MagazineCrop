@@ -6,25 +6,35 @@ from ...model_templates.templates import build_unetpp
 
 
 class Model(nn.Module):
-    def __init__(self, backbone, number_of_classes: int, *args, **kwargs):
+    def __init__(
+        self,
+        backbone,
+        number_of_classes: int,
+        output_raw: bool = False,
+        *args,
+        **kwargs
+    ):
         super(Model, self).__init__(*args, **kwargs)
 
         self._backbone = backbone
 
         # add one more class for dummy class (background) if the number of classes is greater than 1
-        all_classes: int = number_of_classes + (1 if number_of_classes > 1 else 0)
-        self._to_logits = nn.Conv2d(
-            in_channels=self._backbone.out_channels,
-            out_channels=all_classes,
-            kernel_size=1,
-            bias=False,
-        )
+        self._output_raw = output_raw
+        if not output_raw:
+            all_classes: int = number_of_classes + (1 if number_of_classes > 1 else 0)
+            self._to_logits = nn.Conv2d(
+                in_channels=self._backbone.out_channels,
+                out_channels=all_classes,
+                kernel_size=1,
+                bias=False,
+            )
 
     def forward(self, src):
         features = self._backbone(src)
 
-        logits = self._to_logits(features)
-        return logits.permute(0, 2, 3, 1).contiguous()
+        if not self._output_raw:
+            features = self._to_logits(features)
+        return features
 
 
 class IterativeModel(nn.Module):
@@ -57,20 +67,20 @@ class IterativeModel(nn.Module):
         x = self._warmup(src)
 
         x = self._backbones[0](x)
-        logits.append(self._to_logits(x).permute(0, 2, 3, 1).contiguous())
+        logits.append(self._to_logits(x))
 
         for backbone in self._backbones[1:]:
             tmp_x = backbone(x)
             x = x + self._residual_blk(tmp_x)
 
-            logits.append(self._to_logits(x).permute(0, 2, 3, 1).contiguous())
+            logits.append(self._to_logits(x))
 
         return logits
 
 
 def build_iterative_model(embed_dims: list[int] = [32, 64, 128, 256, 512]):
     backbones = [
-        build_unetpp(in_channels=32, embed_dims=embed_dims[:ind])
+        build_unetpp(in_channels=32, embed_dims=embed_dims[:ind], output_raw=True)
         for ind in range(len(embed_dims), 1, -1)
     ]
     model = IterativeModel(in_channels=4, backbones=backbones)
