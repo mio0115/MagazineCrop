@@ -333,7 +333,7 @@ class InterMagazineCropDataset(Dataset):
             self._annotations = json.load(fp_annotations)
         with open(
             os.path.join(
-                self._path_to_root, "annotations", "edge_annotations_1024.json"
+                self._path_to_root, "annotations", "edge_annotations_640.json"
             ),
             "r",
         ) as fp_annotations:
