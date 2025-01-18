@@ -207,12 +207,234 @@ class MagazineCropDataset(Dataset):
         return image, labels, weights
 
 
+class ModMagazineCropDataset(Dataset):
+    def __init__(self, split: str, augment_factor: int = 5, transforms=None):
+        super(ModMagazineCropDataset, self).__init__()
+
+        split = split.lower()
+        if split not in ["train", "valid"]:
+            raise ValueError(f"split must be either 'train' or 'valid', got {split}")
+
+        self._path_to_root = os.path.join(os.getcwd(), "data", "train_data", "scanned")
+        with open(
+            os.path.join(
+                self._path_to_root, "annotations", f"{split}_annotations.json"
+            ),
+            "r",
+        ) as fp_annotations:
+            self._annotations = json.load(fp_annotations)
+        with open(
+            os.path.join(
+                self._path_to_root, "annotations", "edge_annotations_640.json"
+            ),
+            "r",
+        ) as fp_annotations:
+            self._edge_annotations = json.load(fp_annotations)
+
+        self._keys = list(self._annotations.keys())
+        self._orig_len = len(self._keys)
+        self._augment_factor = augment_factor
+        self._split = split
+
+        self._labels = {
+            "background": 0,
+            "foreground": 2,
+            "bookmark": 1,
+            "bookmark_mask": 0,
+        }
+        self._label_order = ["bookmark", "bookmark_mask", "foreground"]
+
+        self._transforms = transforms
+
+    def __len__(self):
+        return self._augment_factor * self._orig_len
+
+    def _generate_labels_and_weights(self, polygons, height: int, width: int):
+        labels = np.zeros((height, width), dtype=np.uint8)
+
+        cls_polygons = {k: [] for k in self._label_order}
+        for polygon in polygons:
+            label = polygon["label"]
+            if label not in self._label_order:
+                continue
+
+            cls_polygons[label].append(
+                np.array(polygon["points"], dtype=np.int32).reshape(-1, 1, 2)
+            )
+
+        for curr_label in self._label_order:
+            if len(cls_polygons[curr_label]) == 0:
+                continue
+            cv2.drawContours(
+                image=labels,
+                contours=cls_polygons[curr_label],
+                contourIdx=-1,
+                color=self._labels[curr_label],
+                thickness=-1,
+            )
+        if self._split == "valid":
+            weights = set_weights_from_resized_contours(
+                image_shape=(height, width),
+                contour=cls_polygons["foreground"][0],
+                inner_ratio=0.9,
+                outer_ratio=1.1,
+            )
+        else:
+            weights = np.ones_like(labels)
+
+        return labels, weights
+
+    def __getitem__(self, index):
+        key = self._keys[index % self._orig_len]
+
+        annotation = self._annotations[key]
+        image_dir = annotation["imagePath"].split(os.sep)[1]
+        edge_annotation = self._edge_annotations[image_dir]
+
+        pil_image = Image.open(
+            os.path.join(self._path_to_root, annotation["imagePath"])
+        ).convert("RGB")
+        orig_image = np.array(pil_image, dtype=np.uint8)[..., ::-1].copy()
+        gray_image = cv2.cvtColor(orig_image, cv2.COLOR_BGR2GRAY)
+        gray_image = cv2.equalizeHist(gray_image)[..., None]
+
+        image = np.concatenate([orig_image, gray_image], axis=-1)
+
+        labels, weights = self._generate_labels_and_weights(
+            polygons=annotation["shapes"],
+            height=annotation["imageHeight"],
+            width=annotation["imageWidth"],
+        )
+
+        edge_len, edge_theta = edge_annotation["edge_length"], edge_annotation["theta"]
+        if self._transforms is not None:
+            image, labels, weights, edge_len, edge_theta = self._transforms(
+                image, labels, weights, edge_len, edge_theta
+            )
+
+        return image, labels, weights, edge_len, edge_theta
+
+
+class InterMagazineCropDataset(Dataset):
+    def __init__(self, split: str, augment_factor: int = 5, transforms=None):
+        super(InterMagazineCropDataset, self).__init__()
+
+        split = split.lower()
+        if split not in ["train", "valid"]:
+            raise ValueError(f"split must be either 'train' or 'valid', got {split}")
+
+        self._path_to_root = os.path.join(os.getcwd(), "data", "train_data", "scanned")
+        with open(
+            os.path.join(
+                self._path_to_root, "annotations", f"{split}_annotations.json"
+            ),
+            "r",
+        ) as fp_annotations:
+            self._annotations = json.load(fp_annotations)
+        with open(
+            os.path.join(
+                self._path_to_root, "annotations", "edge_annotations_1024.json"
+            ),
+            "r",
+        ) as fp_annotations:
+            self._edge_annotations = json.load(fp_annotations)
+
+        self._keys = list(self._annotations.keys())
+        self._orig_len = len(self._keys)
+        self._augment_factor = augment_factor
+        self._split = split
+
+        self._labels = {
+            "background": 0,
+            "foreground": 2,
+            "bookmark": 1,
+            "bookmark_mask": 0,
+        }
+        self._label_order = ["bookmark", "bookmark_mask", "foreground"]
+
+        self._transforms = transforms
+
+    def __len__(self):
+        return self._augment_factor * self._orig_len
+
+    def _generate_labels_and_weights(self, polygons, height: int, width: int):
+        labels = np.zeros((height, width), dtype=np.uint8)
+
+        cls_polygons = {k: [] for k in self._label_order}
+        for polygon in polygons:
+            label = polygon["label"]
+            if label not in self._label_order:
+                continue
+
+            cls_polygons[label].append(
+                np.array(polygon["points"], dtype=np.int32).reshape(-1, 1, 2)
+            )
+
+        for curr_label in self._label_order:
+            if len(cls_polygons[curr_label]) == 0:
+                continue
+            cv2.drawContours(
+                image=labels,
+                contours=cls_polygons[curr_label],
+                contourIdx=-1,
+                color=self._labels[curr_label],
+                thickness=-1,
+            )
+        if self._split == "valid":
+            weights = set_weights_from_resized_contours(
+                image_shape=(height, width),
+                contour=cls_polygons["foreground"][0],
+                inner_ratio=0.9,
+                outer_ratio=1.1,
+            )
+        else:
+            weights = np.ones_like(labels)
+
+        return labels, weights
+
+    def __getitem__(self, index):
+        key = self._keys[index % self._orig_len]
+
+        annotation = self._annotations[key]
+        image_dir = annotation["imagePath"].split(os.sep)[1]
+        edge_annotation = self._edge_annotations[image_dir]
+
+        image_name = os.path.basename(annotation["imagePath"]).split(".")[0]
+        inter_image = np.load(
+            os.path.join(
+                self._path_to_root, "intermediate", image_dir, f"{image_name}.npy"
+            )
+        )
+        inter_image = np.squeeze(inter_image)[..., None]
+
+        labels, weights = self._generate_labels_and_weights(
+            polygons=annotation["shapes"],
+            height=annotation["imageHeight"],
+            width=annotation["imageWidth"],
+        )
+
+        edge_len, edge_theta = edge_annotation["edge_length"], edge_annotation["theta"]
+        if self._transforms is not None:
+            image, labels, weights, edge_len, edge_theta = self._transforms(
+                inter_image, labels, weights, edge_len, edge_theta
+            )
+
+        return image, labels, weights, edge_len, edge_theta
+
+
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
-    from .transforms import build_scanned_transform
+    from .mod_transforms import build_inter_transform
 
-    ds = MagazineCropDataset(split="train", transforms=build_scanned_transform())
-    dl = DataLoader(ds, batch_size=1, num_workers=4)
+    ds = InterMagazineCropDataset(
+        split="train", transforms=build_inter_transform(split="train"), augment_factor=5
+    )
+    dl = DataLoader(ds, batch_size=8, num_workers=4)
 
-    for img, labels, weights in dl:
-        continue
+    bytes_per_element = torch.tensor([], dtype=torch.float32).element_size()
+
+    for img, labels, weights, edge_len, edge_theta in dl:
+        vram_usage_per_batch = img.flatten().shape[0] * bytes_per_element
+
+        print(f"VRAM usage per batch: {vram_usage_per_batch / 1e9:.2f} GB")
+    print("Done")

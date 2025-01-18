@@ -354,6 +354,223 @@ class ChannelScaleAttention(nn.Module):
         return reduced_features
 
 
+class LineApproxBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 1,
+        out_channels: int = 1024,
+        embed_channels: list[int] = [512, 128, 64],
+        *args,
+        **kwargs,
+    ):
+        super(LineApproxBlock, self).__init__(*args, **kwargs)
+
+        self._conv = DoubleConvBlock(
+            in_channels=in_channels,
+            inter_channels=256,
+            out_channels=out_channels,
+            kernel_size=((1, 3), (1, 3)),
+            padding=((0, 1), (0, 1)),
+            stride=1,
+            activation_fn=nn.ReLU(),
+            bias=False,
+        )
+        self._gap = nn.AdaptiveAvgPool2d(1)
+
+        self._regression_head = nn.ModuleList()
+        embed_channels = [out_channels] + embed_channels
+        for prev_chn, chn in zip(embed_channels[:-1], embed_channels[1:]):
+            self._regression_head.append(
+                nn.Sequential(
+                    nn.Linear(prev_chn, chn, bias=False),
+                    nn.LayerNorm(chn),
+                    nn.ReLU(),
+                )
+            )
+        self._left_reg_head = nn.Sequential(
+            nn.Linear(embed_channels[-1] + 1, 3), nn.Sigmoid()
+        )
+        self._right_reg_head = nn.Sequential(
+            nn.Linear(embed_channels[-1] + 1, 3), nn.Sigmoid()
+        )
+        self._increment = nn.Parameter(
+            torch.full((1,), 5, dtype=torch.float32), requires_grad=True
+        )
+        self._decrement = nn.Parameter(
+            torch.full((1,), 5, dtype=torch.float32), requires_grad=True
+        )
+
+    import torch
+
+    def convex_mask(self, grid, points):
+        """
+        Generate a binary mask for the convex hull defined by four points.
+
+        Args:
+            grid (torch.Tensor): Tensor of shape (batch_size, height * width, 2) containing the pixel coordinates.
+            points (torch.Tensor): Tensor of shape (batch_size, 4, 2) containing the four points as (x, y).
+
+        Returns:
+            torch.Tensor: A binary mask of shape (batch_size, height, width) with 1s for pixels inside the convex hull.
+        """
+
+        points = points.float()  # Ensure float for computations
+
+        bs, num_pts, _ = points.shape
+
+        # Check if each pixel is inside the convex hull using cross-product tests
+        flatten_mask = torch.ones(
+            grid.shape[:-1], dtype=torch.bool, device=points.device
+        )
+
+        for i in range(num_pts):
+            p1 = points[:, i]
+            p2 = points[:, (i + 1) % num_pts]  # Next point
+            edge = p2 - p1
+            to_pixel = grid - p1.view(bs, 1, -1)
+            cross_product = (
+                edge[:, 0] * to_pixel[..., 1] - edge[:, 1] * to_pixel[..., 0]
+            )
+            flatten_mask &= (
+                cross_product <= 0
+            )  # Pixel is inside if all cross-products are positive
+
+        return flatten_mask
+
+    def forward(
+        self, src: torch.Tensor, edge_len: torch.Tensor, edge_theta: torch.Tensor
+    ) -> torch.Tensor:
+        bs, ch, h, w = src.shape
+        x = self._conv(src)
+
+        x = self._gap(x).view(bs, -1)
+        for layer in self._regression_head:
+            x = layer(x)
+
+        edge_theta = edge_theta.view(-1, 1) / 180
+        left_side = self._left_reg_head(torch.cat([x, edge_theta], 1))
+        right_side = self._right_reg_head(torch.cat([x, edge_theta], 1))
+
+        scale_factors = torch.tensor(
+            [w, h], device=src.device, dtype=torch.float32
+        ).view(1, 2)
+
+        left_xy = left_side[:, :2] * scale_factors
+        right_xy = right_side[:, :2] * scale_factors
+
+        left_theta = 180 - left_side[:, -1] * 180
+        right_theta = 180 - right_side[:, -1] * 180
+
+        # We then find the four corners of the box
+        top_left = left_xy
+        bottom_left = left_xy + edge_len * torch.stack(
+            [torch.cos(left_theta), torch.sin(left_theta)], 1
+        )
+        top_right = right_xy
+        bottom_right = right_xy + edge_len * torch.stack(
+            [torch.cos(right_theta), torch.sin(right_theta)], 1
+        )
+
+        src_top_left = (
+            torch.tensor([0, 0], device=src.device, dtype=torch.float32)
+            .view(1, -1)
+            .expand_as(top_left)
+        )
+        src_bottom_left = (
+            torch.tensor([0, h], device=src.device, dtype=torch.float32)
+            .view(1, -1)
+            .expand_as(bottom_left)
+        )
+        src_top_right = (
+            torch.tensor([w, 0], device=src.device, dtype=torch.float32)
+            .view(1, -1)
+            .expand_as(top_right)
+        )
+        src_bottom_right = (
+            torch.tensor([w, h], device=src.device, dtype=torch.float32)
+            .view(1, -1)
+            .expand_as(bottom_right)
+        )
+
+        x_coords = torch.arange(w)
+        y_coords = torch.arange(h)
+        grid_x, grid_y = torch.meshgrid(x_coords, y_coords, indexing="xy")
+        grid = (
+            torch.stack([grid_x, grid_y], dim=-1)
+            .to(src.device)[None, ...]
+            .flatten(1, 2)
+        )
+
+        mask = (
+            (
+                self.convex_mask(
+                    grid,
+                    torch.stack(
+                        [top_left, bottom_left, src_bottom_left, src_top_left], 0
+                    ).permute(1, 0, 2),
+                )
+            )
+            .reshape(bs, h, w)
+            .unsqueeze(1)
+            .expand(-1, ch, -1, -1)
+        )
+        src[mask] -= self._decrement.relu()
+
+        mask = (
+            (
+                self.convex_mask(
+                    grid,
+                    torch.stack(
+                        [top_right, src_top_right, src_bottom_right, bottom_right], 0
+                    ).permute(1, 0, 2),
+                )
+            )
+            .reshape(bs, h, w)
+            .unsqueeze(1)
+            .expand(-1, ch, -1, -1)
+        )
+        src[mask] -= self._decrement.relu()
+
+        mid_top = (top_left + top_right) / 2
+        mid_bottom = (bottom_left + bottom_right) / 2
+
+        mid_mid = (mid_top + mid_bottom) / 2
+        mid_top = (mid_top + mid_mid) / 2
+        mid_bottom = (mid_bottom + mid_mid) / 2
+
+        mask = (
+            (
+                self.convex_mask(
+                    grid,
+                    torch.stack(
+                        [mid_top, mid_bottom, src_bottom_left, src_top_left], 0
+                    ).permute(1, 0, 2),
+                )
+            )
+            .reshape(bs, h, w)
+            .unsqueeze(1)
+            .expand(-1, ch, -1, -1)
+        )
+        src[mask] += self._increment.relu()
+
+        mask = (
+            (
+                self.convex_mask(
+                    grid,
+                    torch.stack(
+                        [mid_top, src_top_right, src_bottom_right, mid_bottom], 0
+                    ).permute(1, 0, 2),
+                )
+            )
+            .reshape(bs, h, w)
+            .unsqueeze(1)
+            .expand(-1, ch, -1, -1)
+        )
+        src[mask] += self._increment.relu()
+
+        return src
+
+
 if __name__ == "__main__":
     # test the blocks
     input_tensor = torch.randn(2, 3, 256, 256)
