@@ -208,7 +208,9 @@ class MagazineCropDataset(Dataset):
 
 
 class ModMagazineCropDataset(Dataset):
-    def __init__(self, split: str, augment_factor: int = 5, transforms=None):
+    def __init__(
+        self, split: str, augment_factor: int = 5, transforms=None, edge_size: int = 640
+    ):
         super(ModMagazineCropDataset, self).__init__()
 
         split = split.lower()
@@ -225,7 +227,7 @@ class ModMagazineCropDataset(Dataset):
             self._annotations = json.load(fp_annotations)
         with open(
             os.path.join(
-                self._path_to_root, "annotations", "edge_annotations_640.json"
+                self._path_to_root, "annotations", f"edge_annotations_{edge_size}.json"
             ),
             "r",
         ) as fp_annotations:

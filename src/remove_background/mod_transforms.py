@@ -164,12 +164,21 @@ class Resize(object):
     via a custom resize function.
     """
 
-    def __init__(self, size: tuple[int] = (256, 256)):
+    def __init__(
+        self,
+        size: tuple[int] = (256, 256),
+        resize_img: bool = True,
+        resize_tgt: bool = True,
+        resize_weights: bool = True,
+    ):
         """
         Args:
             size (tuple[int, int]): The target (height, width) for resizing.
         """
         self._size = size
+        self._resize_img = resize_img
+        self._resize_tgt = resize_tgt
+        self._resize_weights = resize_weights
 
     def __call__(
         self,
@@ -190,11 +199,22 @@ class Resize(object):
         Returns:
             (resized_img, resized_tgt, resized_weights): Arrays resized to self._size.
         """
-        resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
-        resized_tgt, _ = resize_with_aspect_ratio(
-            tgt, target_size=self._size, interpolation=cv2.INTER_NEAREST
-        )
-        resized_weights, _ = resize_with_aspect_ratio(weights, target_size=self._size)
+        if self._resize_img:
+            resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
+        else:
+            resized_img = img
+        if self._resize_tgt:
+            resized_tgt, _ = resize_with_aspect_ratio(
+                tgt, target_size=self._size, interpolation=cv2.INTER_NEAREST
+            )
+        else:
+            resized_tgt = tgt
+        if self._resize_weights:
+            resized_weights, _ = resize_with_aspect_ratio(
+                weights, target_size=self._size
+            )
+        else:
+            resized_weights = weights
 
         if img.ndim > resized_img.ndim:
             resized_img = resized_img[..., None]
@@ -285,30 +305,26 @@ class MaskToBinary(object):
         return img, tgt, weights, edge_len, edge_theta
 
 
-def build_valid_transform(size=(640, 640)):
-    tr_fn = v2.Compose(
-        [
-            Resize(size=(640, 640)),
-            MaskToBinary(foreground_label=2),
-            ArrayToTensor(),
-        ]
-    )
-
-    return tr_fn
-
-
-def build_scanned_transform():
-    tr_fn = v2.Compose(
-        [
-            Rotate(random_angle_range=(-5, 5)),
-            RandomHorizontalFlip(not_flip_prob=0.6),
-            RandomVerticalFlip(not_flip_prob=0.9),
-            Resize(size=(640, 640)),
-            MaskToBinary(foreground_label=2),
-            ArrayToTensor(),
-        ]
-    )
-
+def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024)):
+    if split.lower() == "train":
+        tr_fn = v2.Compose(
+            [
+                Rotate(random_angle_range=(-5, 5)),
+                RandomHorizontalFlip(not_flip_prob=0.6),
+                RandomVerticalFlip(not_flip_prob=0.9),
+                Resize(size=size),
+                MaskToBinary(foreground_label=2),
+                ArrayToTensor(),
+            ]
+        )
+    elif split.lower() == "valid":
+        tr_fn = v2.Compose(
+            [
+                Resize(size=size),
+                MaskToBinary(foreground_label=2),
+                ArrayToTensor(),
+            ]
+        )
     return tr_fn
 
 
@@ -319,6 +335,7 @@ def build_inter_transform(split="train"):
                 Rotate(random_angle_range=(-5, 5)),
                 RandomHorizontalFlip(not_flip_prob=0.6),
                 RandomVerticalFlip(not_flip_prob=0.9),
+                Resize(size=(640, 640), resize_img=False),
                 MaskToBinary(foreground_label=2),
                 ArrayToTensor(normalize=False),
             ]
@@ -326,6 +343,7 @@ def build_inter_transform(split="train"):
     elif split.lower() == "valid":
         tr_fn = v2.Compose(
             [
+                Resize(size=(640, 640), resize_img=False),
                 MaskToBinary(foreground_label=2),
                 ArrayToTensor(normalize=False),
             ]

@@ -54,21 +54,18 @@ class PredictForegroundV2(object):
     def __init__(
         self,
         device: str = "cuda",
-        model_name: str = "rm_bg_entire_iter.pth",
+        split: bool = False,
+        backbone: torch.nn.Module = None,
+        model: torch.nn.Module = None,
         verbose: int = 0,
         new_size: tuple[int] = (1024, 1024),
     ):
         self._model_device = device
-        self._model = torch.load(
-            os.path.join(
-                os.getcwd(),
-                "src",
-                "remove_background",
-                "checkpoints",
-                model_name,
-            ),
-            weights_only=False,
-        )
+        self._backbone = backbone
+        self._model = model
+        self._split = split
+
+        self._backbone.to(self._model_device)
         self._model.to(self._model_device)
 
         self._verbose = verbose
@@ -92,7 +89,11 @@ class PredictForegroundV2(object):
             edge_theta = torch.tensor([edge_theta]).to(self._model_device)
 
             in_image = in_image.to(self._model_device)
-            logits = self._model(in_image, edge_len=edge_len, edge_theta=edge_theta)
+            if self._split:
+                logits = self._backbone(in_image)[0]
+                logits = self._model(logits, edge_len=edge_len, edge_theta=edge_theta)
+            else:
+                logits = self._model(in_image, edge_len=edge_len, edge_theta=edge_theta)
             is_fg_prob = []
             for idx in return_logits_indices:
                 is_fg_prob.append(logits[idx].sigmoid().cpu().numpy())
@@ -115,6 +116,7 @@ if __name__ == "__main__":
     import subprocess
     import json
 
+    from ..remove_background.model.mod_unet_pp import build_backbone, InterModel
     from ..utils.misc import resize_with_aspect_ratio
     from ..utils.arg_parser import get_parser
 
@@ -124,12 +126,24 @@ if __name__ == "__main__":
     parser = get_parser("dev")
     args = parser.parse_args()
 
-    infer_dir = "C2980"
+    infer_dir = "C2797"
 
     path_to_infer_dir = os.path.join(
         os.getcwd(), "data", "train_data", "scanned", "images", infer_dir
     )
-    pred_fg = PredictForegroundV2(model_name="test2.pth")
+    path_to_ckpt = os.path.join(os.getcwd(), "src", "remove_background", "checkpoints")
+    backbone = build_backbone(
+        resume=True,
+        path_to_ckpt=os.path.join(
+            path_to_ckpt,
+            "rm_bg_iter_C2980_part_weights.pth",
+        ),
+    )
+    inter_model = torch.load(
+        os.path.join(path_to_ckpt, "test3.pth"), weights_only=False
+    )
+
+    pred_fg = PredictForegroundV2(backbone=backbone, model=inter_model)
     count = 0
 
     with open(

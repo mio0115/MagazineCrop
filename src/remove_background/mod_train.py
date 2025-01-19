@@ -4,18 +4,14 @@ import time
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-import numpy as np
 
-# from .model.model_unet import build_iterative_model
 from .model.mod_unet_pp import build_model
 from .datasets import ModMagazineCropDataset
 from .mod_transforms import (
-    build_valid_transform,
     build_scanned_transform,
 )
 from ..utils.arg_parser import get_parser
 from .loss import ComboLoss
-from .metrics import BinaryMetrics
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
@@ -134,11 +130,15 @@ if __name__ == "__main__":
 
     train_dataset = ModMagazineCropDataset(
         split="train",
-        transforms=build_scanned_transform(),
+        transforms=build_scanned_transform(split="train", size=(1024, 1024)),
         augment_factor=args.augment_factor,
+        edge_size=1024,
     )
     valid_dataset = ModMagazineCropDataset(
-        split="valid", transforms=build_valid_transform(), augment_factor=2
+        split="valid",
+        transforms=build_scanned_transform(split="valid", size=(1024, 1024)),
+        augment_factor=2,
+        edge_size=1024,
     )
     dataloader = {
         "train": DataLoader(

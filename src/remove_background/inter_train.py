@@ -108,7 +108,7 @@ if __name__ == "__main__":
         augment_factor=args.augment_factor,
     )
     valid_dataset = InterMagazineCropDataset(
-        split="valid", transforms=build_inter_transform("valid"), augment_factor=2
+        split="valid", transforms=build_inter_transform("valid"), augment_factor=1
     )
     dataloader = {
         "train": DataLoader(
@@ -116,14 +116,12 @@ if __name__ == "__main__":
             batch_size=args.batch_size,
             shuffle=True,
             num_workers=args.dataloader_workers,
-            pin_memory=True,
         ),
         "valid": DataLoader(
             valid_dataset,
             batch_size=args.batch_size,
             shuffle=False,
             num_workers=args.dataloader_workers,
-            pin_memory=True,
         ),
     }
 
