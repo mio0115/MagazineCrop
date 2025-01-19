@@ -455,9 +455,9 @@ class LineApproxBlock(nn.Module):
         bs, num_pts, _ = points.shape
 
         # Start with all True, then refine via cross-product checks
-        flatten_mask = torch.ones(
+        mask = torch.ones(
             grid.shape[:-1], dtype=torch.bool, device=points.device
-        )
+        ).expand(bs, -1)
 
         for i in range(num_pts):
             p1 = points[:, i]
@@ -466,13 +466,14 @@ class LineApproxBlock(nn.Module):
             to_pixel = grid - p1.view(bs, 1, -1)
 
             cross_product = (
-                edge[:, 0] * to_pixel[..., 1] - edge[:, 1] * to_pixel[..., 0]
+                edge[:, 0].view(bs, 1) * to_pixel[..., 1]
+                - edge[:, 1].view(bs, 1) * to_pixel[..., 0]
             )
 
             # Inside if cross_product <= 0 for all edges (assuming consistent winding)
-            flatten_mask &= cross_product <= 0
+            mask = mask & (cross_product <= 0)
 
-        return flatten_mask
+        return mask
 
     def forward(
         self, src: torch.Tensor, edge_len: torch.Tensor, edge_theta: torch.Tensor
@@ -531,12 +532,16 @@ class LineApproxBlock(nn.Module):
 
         # 5) Create masks and modify src
         mask_left = self._make_polygon_mask(
-            top_left, bottom_left, self._src_bottom_left, self._src_top_left, *src.shape
+            top_left,
+            bottom_left,
+            self._src_bottom_left.expand(bs, -1),
+            self._src_top_left.expand(bs, -1),
+            *src.shape,
         )
         mask_right = self._make_polygon_mask(
             top_right,
-            self._src_top_right,
-            self._src_bottom_right,
+            self._src_top_right.expand(bs, -1),
+            self._src_bottom_right.expand(bs, -1),
             bottom_right,
             *src.shape,
         )
@@ -552,10 +557,18 @@ class LineApproxBlock(nn.Module):
         mid_bottom = (mid_bottom + mid_mid) / 2.0
 
         mask_left_2 = self._make_polygon_mask(
-            mid_top, mid_bottom, self._src_bottom_left, self._src_top_left, *src.shape
+            mid_top,
+            mid_bottom,
+            self._src_bottom_left.expand(bs, -1),
+            self._src_top_left.expand(bs, -1),
+            *src.shape,
         )
         mask_right_2 = self._make_polygon_mask(
-            mid_top, self._src_top_right, self._src_bottom_right, mid_bottom, *src.shape
+            mid_top,
+            self._src_top_right.expand(bs, -1),
+            self._src_bottom_right.expand(bs, -1),
+            mid_bottom,
+            *src.shape,
         )
         after_inc = after_dec + (mask_left_2 + mask_right_2) * self._increment
 
@@ -575,9 +588,7 @@ class LineApproxBlock(nn.Module):
         """
         Create a float mask for a polygon given 4 corners. Re-shapes and broadcasts to (bs, ch, h, w).
         """
-        poly_pts = torch.stack(
-            [pt1, pt2, pt3.expand_as(pt2), pt4.expand_as(pt1)], dim=0
-        ).permute(
+        poly_pts = torch.stack([pt1, pt2, pt3, pt4], dim=0).permute(
             1, 0, 2
         )  # shape (bs, 4, 2)
 
