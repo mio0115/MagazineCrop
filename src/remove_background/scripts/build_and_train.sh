@@ -20,6 +20,7 @@ RESUME_FROM="rm_bg_unetpp_pretrained.pth"
 CKPT_DIR="./checkpoints"
 MODULE_NAME="train"
 DATALOADER_WORKERS=3
+EDGE_SIZE=640
 TRAIN=""
 RESUME=""
 
@@ -43,6 +44,8 @@ while [[ "$#" -gt 0 ]]; do
         --dataloader-workers) DATALOADER_WORKERS="$2"; shift;;
         -ckpt-dir) CKPT_DIR="$2"; shift;;
         --checkpoint-dir) CKPT_DIR="$2"; shift;;
+        --module-name) MODULE_NAME="$2"; shift;;
+        --edge-size) EDGE_SIZE="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -77,6 +80,7 @@ docker run --rm -it \
             --resume-from=${RESUME_FROM} \
             --dataloader-workers=${DATALOADER_WORKERS} \
             --checkpoint-dir=${CKPT_DIR} \
+            --edge-size=${EDGE_SIZE} \
             ${TRAIN} \
             ${RESUME} \
 
