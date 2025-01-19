@@ -41,12 +41,14 @@ class Backbone(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, backbone, *args, **kwargs):
+    def __init__(
+        self, backbone, src_shape: tuple[int, int] = (640, 640), *args, **kwargs
+    ):
         super(Model, self).__init__(*args, **kwargs)
 
         self._backbone = backbone
 
-        self._line_approx_block = LineApproxBlock()
+        self._line_approx_block = LineApproxBlock(src_shape=src_shape)
 
     def forward(self, src, edge_len, edge_theta):
         logits = self._backbone(src)[0]

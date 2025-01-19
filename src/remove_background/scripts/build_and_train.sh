@@ -18,6 +18,7 @@ CLS_NUM=20
 SHARED_MEM_SIZE="200g"
 RESUME_FROM="rm_bg_unetpp_pretrained.pth"
 CKPT_DIR="./checkpoints"
+MODULE_NAME="train"
 DATALOADER_WORKERS=3
 TRAIN=""
 RESUME=""
@@ -65,7 +66,7 @@ docker run --rm -it \
         --gpus all \
         --shm-size=${SHARED_MEM_SIZE} \
         ${IMAGE_NAME}:${IMAGE_TAG} \
-        python -m src.remove_background.train \
+        python -m src.remove_background.${MODULE_NAME} \
             --learning-rate=${LEARNING_RATE} \
             --lr-backbone=${LEARNING_RATE_BACKBONE} \
             --augment-factor=${AUGMENT_FACTOR} \
