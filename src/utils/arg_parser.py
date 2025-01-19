@@ -144,6 +144,14 @@ def dev_parser():
         default="rm_bg_unetpp_pretrained.pth",
         dest="resume_from",
     )
+    training_group.add_argument(
+        "--edge-size",
+        type=int,
+        default=640,
+        choices=[640, 1024],
+        dest="edge_size",
+        help="height and width for src",
+    )
 
     # arguments for inference
     inference_group = parser.add_argument_group("Inference arguments")

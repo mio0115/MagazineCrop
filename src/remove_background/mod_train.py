@@ -97,11 +97,13 @@ if __name__ == "__main__":
     path_to_train = os.path.join(os.getcwd(), "data", "train_data")
     path_to_valid = os.path.join(os.getcwd(), "data", "valid_data")
 
+    src_shape = (args.edge_size, args.edge_size)
     # model = build_iterative_model(num_iter=3, num_class=1)
     model = build_model(
         path_to_backbone_ckpt=os.path.join(
             args.checkpoint_dir, "rm_bg_iter_C2980_part_weights.pth"
-        )
+        ),
+        src_shape=src_shape,
     )
     optimizer = torch.optim.AdamW(
         [
@@ -130,15 +132,15 @@ if __name__ == "__main__":
 
     train_dataset = ModMagazineCropDataset(
         split="train",
-        transforms=build_scanned_transform(split="train", size=(1024, 1024)),
+        transforms=build_scanned_transform(split="train", size=src_shape),
         augment_factor=args.augment_factor,
-        edge_size=1024,
+        edge_size=args.edge_size,
     )
     valid_dataset = ModMagazineCropDataset(
         split="valid",
-        transforms=build_scanned_transform(split="valid", size=(1024, 1024)),
+        transforms=build_scanned_transform(split="valid", size=src_shape),
         augment_factor=2,
-        edge_size=1024,
+        edge_size=args.edge_size,
     )
     dataloader = {
         "train": DataLoader(

@@ -90,9 +90,11 @@ def build_backbone(
     return model
 
 
-def build_model(path_to_backbone_ckpt: str = None):
+def build_model(
+    path_to_backbone_ckpt: str = None, src_shape: tuple[int, int] = (640, 640)
+):
     backbone = build_backbone(resume=True, path_to_ckpt=path_to_backbone_ckpt)
-    model = Model(backbone)
+    model = Model(backbone, src_shape=src_shape)
 
     return model
 
