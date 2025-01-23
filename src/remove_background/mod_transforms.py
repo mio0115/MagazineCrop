@@ -22,6 +22,27 @@ class Rotate(object):
         """
         self._random_angle_range = random_angle_range
 
+    def rotate_points(self, points, angle):
+        """
+        Rotate points by a given angle around the origin.
+
+        Args:
+            points (np.ndarray): An array of shape (N, 2) representing N points.
+            angle (float): The angle in degrees to rotate the points.
+
+        Returns:
+            np.ndarray: The rotated points.
+        """
+        # Convert the angle to radians.
+        theta = np.deg2rad(angle)
+        # Create the rotation matrix.
+        cos_t = np.cos(theta)
+        sin_t = np.sin(theta)
+        # Apply the rotation matrix to the points.
+        new_x = points[:, 0] * cos_t - points[:, 1] * sin_t
+        new_y = points[:, 0] * sin_t + points[:, 1] * cos_t
+        return np.stack([new_x, new_y], axis=1)
+
     def __call__(
         self,
         img: np.ndarray,
@@ -29,7 +50,8 @@ class Rotate(object):
         weights: np.ndarray,
         edge_len: float,
         edge_theta: float,
-    ) -> tuple[np.ndarray, np.ndarray]:
+        edges: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, np.ndarray]:
         """
         Applies a random rotation to the image, target mask, and weights.
 
@@ -55,6 +77,7 @@ class Rotate(object):
         rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 
         rotated_edge_theta = edge_theta + angle
+        rotated_edges = self.rotate_points(edges, angle)
 
         # Rotate the image with (intersection_x, height//2) as the center
         rotated_img = cv2.warpAffine(img, rot_mat, (width, height))
@@ -74,7 +97,14 @@ class Rotate(object):
         if img.ndim > rotated_img.ndim:
             rotated_img = rotated_img[..., None]
 
-        return rotated_img, rotated_tgt, rotated_weights, edge_len, rotated_edge_theta
+        return (
+            rotated_img,
+            rotated_tgt,
+            rotated_weights,
+            edge_len,
+            rotated_edge_theta,
+            rotated_edges,
+        )
 
 
 class RandomHorizontalFlip(object):
@@ -98,7 +128,8 @@ class RandomHorizontalFlip(object):
         weights: np.ndarray,
         edge_len: float,
         edge_theta: float,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
+        edges: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, np.ndarray]:
         """
         Flips the input arrays horizontally with (1 - not_flip_prob) chance.
 
@@ -111,6 +142,7 @@ class RandomHorizontalFlip(object):
             tuple[np.ndarray, np.ndarray, np.ndarray]: The flipped (or unchanged)
             image, target, and weights arrays.
         """
+        width = img.shape[1]
         # Draw a random number in [0,1). If it's >= not_flip_prob, we flip.
         if np.random.rand() >= self._not_flip_prob:
             # Flip along axis=1 (left-right flip).
@@ -118,8 +150,9 @@ class RandomHorizontalFlip(object):
             tgt = np.flip(tgt, axis=1)
             weights = np.flip(weights, axis=1)
             edge_theta = 180 - edge_theta
+            edges[:, 0] = width - edges[:, 0]
 
-        return img, tgt, weights, edge_len, edge_theta
+        return img, tgt, weights, edge_len, edge_theta, edges
 
 
 class RandomVerticalFlip(object):
@@ -143,18 +176,21 @@ class RandomVerticalFlip(object):
         weights: np.ndarray,
         edge_len: float,
         edge_theta: float,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
+        edges: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, np.ndarray]:
         """
         Flips the input arrays vertically with (1 - not_flip_prob) chance.
         """
+        height = img.shape[0]
         # Draw a random number in [0,1). If it's >= not_flip_prob, we flip.
         if np.random.rand() >= self._not_flip_prob:
             img = np.flip(img, axis=0)
             tgt = np.flip(tgt, axis=0)
             weights = np.flip(weights, axis=0)
             edge_theta = 180 - edge_theta
+            edges[:, 1] = height - edges[:, 1]
 
-        return img, tgt, weights, edge_len, edge_theta
+        return img, tgt, weights, edge_len, edge_theta, edges
 
 
 class Resize(object):
@@ -187,7 +223,8 @@ class Resize(object):
         weights: np.ndarray,
         edge_len: float,
         edge_theta: float,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
+        edges: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, np.ndarray]:
         """
         Resizes the image, target mask, and weights to self._size.
 
@@ -195,12 +232,17 @@ class Resize(object):
             img (np.ndarray): Input image array of shape (H, W) or (H, W, C).
             tgt (np.ndarray): Target mask array of shape (H, W).
             weights (np.ndarray): Weights mask array of shape (H, W).
+            edge_len (float): The length of the edge of the image.
+            edge_theta (float): The angle of the edge of the image.
+            edges (np.ndarray): The edge points of the image.
 
         Returns:
-            (resized_img, resized_tgt, resized_weights): Arrays resized to self._size.
+            (resized_img, resized_tgt, resized_weights, edge_len, edge_theta, edges): Arrays resized to self._size.
         """
         if self._resize_img:
             resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
+            edges[:, 0] = self._size[1] * edges[:, 0] / img.shape[1]
+            edges[:, 1] = self._size[0] * edges[:, 1] / img.shape[0]
         else:
             resized_img = img
         if self._resize_tgt:
@@ -219,7 +261,7 @@ class Resize(object):
         if img.ndim > resized_img.ndim:
             resized_img = resized_img[..., None]
 
-        return resized_img, resized_tgt, resized_weights, edge_len, edge_theta
+        return resized_img, resized_tgt, resized_weights, edge_len, edge_theta, edges
 
 
 class ArrayToTensor(object):
@@ -228,8 +270,9 @@ class ArrayToTensor(object):
     into PyTorch tensors. It also scales the image to [0,1] by dividing by 255.
     """
 
-    def __init__(self, normalize=True):
+    def __init__(self, normalize=True, size: tuple[int, int] = (1024, 1024)):
         self._normalize = normalize
+        self._size = size
 
     def __call__(
         self,
@@ -238,18 +281,25 @@ class ArrayToTensor(object):
         weights: np.ndarray,
         edge_len: float,
         edge_theta: float,
+        edges: np.ndarray,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
             img (np.ndarray): Image array of shape (H, W, C) in [0..255].
             tgt (np.ndarray): Target mask array of shape (H, W).
             weights (np.ndarray): Weights array of shape (H, W).
+            edge_len (float): The length of the edge of the image.
+            edge_theta (float): The angle of the edge of the image.
+            edges (np.ndarray): The edge points of the image.
 
         Returns:
-            (img_tensor, tgt_tensor, weights_tensor):
+            (img_tensor, tgt_tensor, weights_tensor, edge_len, edge_theta, edges):
                 - img_tensor shape: (C, H, W), float32 in [0, 1].
                 - tgt_tensor shape: (H, W), float32.
                 - weights_tensor shape: (H, W), float32.
+                - edge_len shape: (1), float32.
+                - edge_theta shape: (1), float32.
+                - edges shape: (N, 2), float32.
         """
         # Convert from numpy arrays to PyTorch tensors
         if self._normalize:
@@ -260,8 +310,12 @@ class ArrayToTensor(object):
         edge_len = torch.tensor(edge_len, dtype=torch.float32)
         edge_theta = torch.tensor(edge_theta, dtype=torch.float32)
 
+        edges = torch.tensor(edges, dtype=torch.float32)
+        edges[..., 0] = edges[..., 0] / self._size[1]
+        edges[..., 1] = edges[..., 1] / self._size[0]
+
         # permute img to (C, H, W)
-        return img.permute(2, 0, 1), tgt, weights, edge_len, edge_theta
+        return img.permute(2, 0, 1), tgt, weights, edge_len, edge_theta, edges
 
 
 class MaskToBinary(object):
@@ -285,24 +339,31 @@ class MaskToBinary(object):
         weights: np.ndarray,
         edge_len: float,
         edge_theta: float,
+        edges: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
         """
         Args:
             img (np.ndarray): Image array of shape (H, W, C) or (H, W).
             tgt (np.ndarray): Target mask with integer labels, shape (H, W).
             weights (np.ndarray): Weights array, shape (H, W).
+            edge_len (float): The length of the edge of the image.
+            edge_theta (float): The angle of the edge of the image.
+            edges (np.ndarray): The edge points of the image.
 
         Returns:
-            (img, binary_tgt, weights):
+            (img, binary_tgt, weights, edge_len, edge_theta, edges):
                 - The original image unchanged.
                 - A binary mask (0 or 1) where 1 indicates `foreground_label` pixels.
                 - The original weights unchanged.
+                - The original edge_len unchanged.
+                - The original edge_theta unchanged.
+                - The original edges unchanged.
         """
         # Convert to binary mask
         # Set to 1 if the target is the foreground label, 0 otherwise
         tgt = (tgt == self._foreground_label).astype(np.int64)
 
-        return img, tgt, weights, edge_len, edge_theta
+        return img, tgt, weights, edge_len, edge_theta, edges
 
 
 def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024)):
@@ -314,7 +375,7 @@ def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024))
                 RandomVerticalFlip(not_flip_prob=0.9),
                 Resize(size=size),
                 MaskToBinary(foreground_label=2),
-                ArrayToTensor(),
+                ArrayToTensor(normalize=True, size=size),
             ]
         )
     elif split.lower() == "valid":
@@ -322,7 +383,7 @@ def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024))
             [
                 Resize(size=size),
                 MaskToBinary(foreground_label=2),
-                ArrayToTensor(),
+                ArrayToTensor(normalize=True, size=size),
             ]
         )
     return tr_fn

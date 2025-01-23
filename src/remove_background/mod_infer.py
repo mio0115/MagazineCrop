@@ -65,7 +65,8 @@ class PredictForegroundV2(object):
         self._model = model
         self._split = split
 
-        self._backbone.to(self._model_device)
+        if backbone is not None:
+            self._backbone.to(self._model_device)
         self._model.to(self._model_device)
 
         self._verbose = verbose
@@ -126,24 +127,27 @@ if __name__ == "__main__":
     parser = get_parser("dev")
     args = parser.parse_args()
 
-    infer_dir = "C2797"
+    infer_dir = "C2980"
 
     path_to_infer_dir = os.path.join(
         os.getcwd(), "data", "train_data", "scanned", "images", infer_dir
     )
     path_to_ckpt = os.path.join(os.getcwd(), "src", "remove_background", "checkpoints")
-    backbone = build_backbone(
-        resume=True,
-        path_to_ckpt=os.path.join(
-            path_to_ckpt,
-            "rm_bg_iter_C2980_part_weights.pth",
-        ),
-    )
-    inter_model = torch.load(
-        os.path.join(path_to_ckpt, "test3.pth"), weights_only=False
+    # backbone = build_backbone(
+    #     resume=True,
+    #     path_to_ckpt=os.path.join(
+    #         path_to_ckpt,
+    #         "rm_bg_iter_C2980_part_weights.pth",
+    #     ),
+    # )
+    # inter_model = torch.load(
+    #     os.path.join(path_to_ckpt, "test3.pth"), weights_only=False
+    # )
+    model = torch.load(
+        os.path.join(path_to_ckpt, "rm_bg_line_approx_test.pth"), weights_only=False
     )
 
-    pred_fg = PredictForegroundV2(backbone=backbone, model=inter_model)
+    pred_fg = PredictForegroundV2(model=model, split=False)
     count = 0
 
     with open(
@@ -173,22 +177,12 @@ if __name__ == "__main__":
         ).convert("RGB")
         im = np.array(pil_im.copy(), dtype=np.uint8)[..., ::-1]  # RGB to BGR
         resized_im, _ = resize_with_aspect_ratio(im, target_size=(640, 640))
-        # inverted_im = np.flip(resized_im, axis=1)
         resized_gray_im = cv2.cvtColor(resized_im, cv2.COLOR_BGR2GRAY)
         resized_gray_im = cv2.equalizeHist(resized_gray_im)
         input_im = np.concatenate([resized_im, resized_gray_im[..., None]], axis=-1)
 
         edge_len = edge_info["edge_length"]
         edge_theta = edge_info["theta"]
-        # resized_im = cv2.cvtColor(resized_im, cv2.COLOR_BGR2GRAY)
-
-        # pred_fg = PredictForegroundV2(model_name="rm_bg_test_ft033.pth")
-        # fg_mask = pred_fg(resized_im.copy())
-
-        # fg_mask = fg_mask.squeeze(0)
-        # masked_im = resized_im * fg_mask[..., None]
-
-        # cv2.imwrite(os.path.join("/", "home", "daniel", "Desktop", "before.jpg"), masked_im)
 
         masks = pred_fg(
             input_im,

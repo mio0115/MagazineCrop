@@ -6,15 +6,26 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from .model.mod_unet_pp import build_model
-from .datasets import ModMagazineCropDataset
+from .datasets import ModMagazineCropDataset, mod_mc_collate_fn
 from .mod_transforms import (
     build_scanned_transform,
 )
 from ..utils.arg_parser import get_parser
-from .loss import ComboLoss
+from .loss import ModComboLoss
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
+
+
+def move_to_device(
+    data: dict[str, torch.Tensor] | torch.Tensor, device: str | torch.device
+) -> dict[str, torch.Tensor]:
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+    elif isinstance(data, dict):
+        return {k: v.to(device) for k, v in data.items()}
+    else:
+        raise ValueError("Data should be either a dict or a tensor")
 
 
 def train(
@@ -37,17 +48,19 @@ def train(
         model.train()
         running_loss = 0.0
         for ind, data in enumerate(data_loader["train"]):
-            src, tgt, weights, edge_len, edge_theta = data
-            src = src.to(args.device)
-            tgt = tgt.to(args.device)
-            weights = weights.to(args.device)
-            edge_len = edge_len.to(args.device)
-            edge_theta = edge_theta.to(args.device)
+            inputs, targets, weights = [
+                move_to_device(data=x, device=args.device) for x in data
+            ]
 
             optimizer.zero_grad()
-            logits = model(src, edge_len, edge_theta)
+            # outputs = {'logits': logits, 'coords': coords}
+            outputs = model(
+                src=inputs["images"],
+                edge_length=inputs["length"],
+                edge_theta=inputs["theta"],
+            )
 
-            loss = loss_fn(logits, tgt, weights)
+            loss = loss_fn(outputs=outputs, targets=targets, weights=weights)
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
@@ -61,15 +74,20 @@ def train(
             with torch.no_grad():
                 running_vloss = 0.0
                 for ind, data in enumerate(data_loader["valid"]):
-                    src, tgt, weights, edge_len, edge_theta = data
-                    src = src.to(args.device)
-                    tgt = tgt.to(args.device)
-                    weights = weights.to(args.device)
-                    edge_len = edge_len.to(args.device)
-                    edge_theta = edge_theta.to(args.device)
+                    inputs, targets, weights = [
+                        move_to_device(data=x, device=args.device) for x in data
+                    ]
 
-                    logits = model(src, edge_len, edge_theta)
-                    loss = loss_fn(logits, tgt, weights)
+                    optimizer.zero_grad()
+                    # outputs = {'logits': logits, 'coords': coords}
+                    outputs = model(
+                        src=inputs["images"],
+                        edge_length=inputs["length"],
+                        edge_theta=inputs["theta"],
+                    )
+
+                    loss = loss_fn(outputs=outputs, targets=targets, weights=weights)
+
                     running_vloss += loss.item()
 
                 avg_vloss = running_vloss / (ind + 1)
@@ -119,7 +137,7 @@ if __name__ == "__main__":
         lr=args.learning_rate,
     )
 
-    loss_fn = ComboLoss(number_of_classes=1)
+    loss_fn = ModComboLoss(number_of_classes=1)
 
     if args.resume:
         model = torch.load(
@@ -148,12 +166,14 @@ if __name__ == "__main__":
             batch_size=args.batch_size,
             shuffle=True,
             num_workers=args.dataloader_workers,
+            collate_fn=mod_mc_collate_fn,
         ),
         "valid": DataLoader(
             valid_dataset,
             batch_size=args.batch_size,
             shuffle=False,
             num_workers=args.dataloader_workers,
+            collate_fn=mod_mc_collate_fn,
         ),
     }
 

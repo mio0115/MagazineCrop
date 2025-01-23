@@ -207,6 +207,22 @@ class MagazineCropDataset(Dataset):
         return image, labels, weights
 
 
+def mod_mc_collate_fn(batch):
+    images, labels, weights, edge_lens, edge_thetas, edges = zip(*batch)
+
+    inputs = {
+        "images": torch.stack(images, dim=0),
+        "length": torch.stack(edge_lens, dim=0),
+        "theta": torch.stack(edge_thetas, dim=0),
+    }
+    targets = {
+        "labels": torch.stack(labels, dim=0),
+        "corner_coordinates": torch.stack(edges, dim=0),
+    }
+    weights = torch.stack(weights, dim=0)
+    return inputs, targets, weights
+
+
 class ModMagazineCropDataset(Dataset):
     def __init__(
         self, split: str, augment_factor: int = 5, transforms=None, edge_size: int = 640
@@ -255,9 +271,14 @@ class ModMagazineCropDataset(Dataset):
         labels = np.zeros((height, width), dtype=np.uint8)
 
         cls_polygons = {k: [] for k in self._label_order}
+        edges = []
         for polygon in polygons:
             label = polygon["label"]
             if label not in self._label_order:
+                if label == "edge":
+                    edge = np.array(polygon["points"], dtype=np.float32).reshape(-1, 2)
+                    sorted_edge = edge[np.argsort(edge[:, 1])]
+                    edges.append(sorted_edge)
                 continue
 
             cls_polygons[label].append(
@@ -284,7 +305,14 @@ class ModMagazineCropDataset(Dataset):
         else:
             weights = np.ones_like(labels)
 
-        return labels, weights
+        edges = np.array(edges, dtype=np.float32)
+        edges = edges[np.argsort(edges[:, 0, 0])].reshape(-1, 2)
+
+        return (
+            labels,
+            weights,
+            edges,
+        )
 
     def __getitem__(self, index):
         key = self._keys[index % self._orig_len]
@@ -302,7 +330,7 @@ class ModMagazineCropDataset(Dataset):
 
         image = np.concatenate([orig_image, gray_image], axis=-1)
 
-        labels, weights = self._generate_labels_and_weights(
+        labels, weights, edges = self._generate_labels_and_weights(
             polygons=annotation["shapes"],
             height=annotation["imageHeight"],
             width=annotation["imageWidth"],
@@ -310,11 +338,11 @@ class ModMagazineCropDataset(Dataset):
 
         edge_len, edge_theta = edge_annotation["edge_length"], edge_annotation["theta"]
         if self._transforms is not None:
-            image, labels, weights, edge_len, edge_theta = self._transforms(
-                image, labels, weights, edge_len, edge_theta
+            image, labels, weights, edge_len, edge_theta, edges = self._transforms(
+                image, labels, weights, edge_len, edge_theta, edges
             )
 
-        return image, labels, weights, edge_len, edge_theta
+        return image, labels, weights, edge_len, edge_theta, edges
 
 
 class InterMagazineCropDataset(Dataset):
@@ -400,7 +428,6 @@ class InterMagazineCropDataset(Dataset):
         annotation = self._annotations[key]
         image_dir = annotation["imagePath"].split(os.sep)[1]
         edge_annotation = self._edge_annotations[image_dir]
-
         image_name = os.path.basename(annotation["imagePath"]).split(".")[0]
         inter_image = np.load(
             os.path.join(

@@ -175,3 +175,31 @@ class ComboLoss(nn.Module):
         dice_loss = torch.stack(dice_loss).mean()
 
         return self._alpha * ce_loss + dice_loss
+
+
+class ModComboLoss(nn.Module):
+    def __init__(self, number_of_classes: int, factor: float = 0.3, *args, **kwargs):
+        super(ModComboLoss, self).__init__(*args, **kwargs)
+
+        self._logits_loss_fn = ComboLoss(number_of_classes=number_of_classes, alpha=0.5)
+        self._coords_loss_fn = nn.MSELoss(reduction="mean")
+        self._factor = factor
+
+    def forward(
+        self,
+        outputs: dict[str, torch.Tensor],
+        targets: dict[str, torch.Tensor],
+        weights: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if weights is None:
+            weights = torch.ones_like(targets)
+
+        logits_loss = self._logits_loss_fn(
+            logits=outputs["logits"], targets=targets["labels"], weights=weights
+        )
+        coords_loss = self._coords_loss_fn(
+            outputs["coords"], targets["corner_coordinates"]
+        )
+        loss = self._factor * logits_loss + (1 - self._factor) * coords_loss
+
+        return loss

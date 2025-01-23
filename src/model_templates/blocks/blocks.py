@@ -410,70 +410,70 @@ class LineApproxBlock(nn.Module):
 
         # Register buffers for constant geometry references
         w, h = src_shape
-        x_coords = torch.arange(w)
-        y_coords = torch.arange(h)
-        grid_x, grid_y = torch.meshgrid(x_coords, y_coords, indexing="xy")
+        # x_coords = torch.arange(w)
+        # y_coords = torch.arange(h)
+        # grid_x, grid_y = torch.meshgrid(x_coords, y_coords, indexing="xy")
 
-        self.register_buffer(
-            "_src_top_left", torch.tensor([0, 0], dtype=torch.float32).view(1, -1)
-        )
-        self.register_buffer(
-            "_src_bottom_left", torch.tensor([0, h], dtype=torch.float32).view(1, -1)
-        )
-        self.register_buffer(
-            "_src_top_right", torch.tensor([w, 0], dtype=torch.float32).view(1, -1)
-        )
-        self.register_buffer(
-            "_src_bottom_right", torch.tensor([w, h], dtype=torch.float32).view(1, -1)
-        )
-        self.register_buffer(
-            "_grid", torch.stack([grid_x, grid_y], dim=-1)[None, ...].flatten(1, 2)
-        )
-        self.register_buffer(
-            "_increment", torch.tensor(5.0, dtype=torch.float32, requires_grad=False)
-        )
-        self.register_buffer(
-            "_decrement", torch.tensor(5.0, dtype=torch.float32, requires_grad=False)
-        )
+        # self.register_buffer(
+        #     "_src_top_left", torch.tensor([0, 0], dtype=torch.float32).view(1, -1)
+        # )
+        # self.register_buffer(
+        #     "_src_bottom_left", torch.tensor([0, h], dtype=torch.float32).view(1, -1)
+        # )
+        # self.register_buffer(
+        #     "_src_top_right", torch.tensor([w, 0], dtype=torch.float32).view(1, -1)
+        # )
+        # self.register_buffer(
+        #     "_src_bottom_right", torch.tensor([w, h], dtype=torch.float32).view(1, -1)
+        # )
+        # self.register_buffer(
+        #     "_grid", torch.stack([grid_x, grid_y], dim=-1)[None, ...].flatten(1, 2)
+        # )
+        # self.register_buffer(
+        #     "_increment", torch.tensor(5.0, dtype=torch.float32, requires_grad=False)
+        # )
+        # self.register_buffer(
+        #     "_decrement", torch.tensor(5.0, dtype=torch.float32, requires_grad=False)
+        # )
         self.register_buffer(
             "_scale_factors", torch.tensor([w, h], dtype=torch.float32)
         )
 
-    def convex_mask(self, grid: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
-        """
-        Generate a binary mask for the convex hull defined by 4 points, using cross-product tests.
+    # def convex_mask(self, grid: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
+    #     """
+    #     Generate a binary mask for the convex hull defined by 4 points, using cross-product tests.
 
-        Args:
-            grid (Tensor): shape (batch_size, height*width, 2), pixel coordinates.
-            points (Tensor): shape (batch_size, 4, 2), the polygon corners as (x, y).
+    #     Args:
+    #         grid (Tensor): shape (batch_size, height*width, 2), pixel coordinates.
+    #         points (Tensor): shape (batch_size, 4, 2), the polygon corners as (x, y).
 
-        Returns:
-            Tensor: A binary mask (bool) of shape (batch_size, height, width) with True for
-            pixels inside the convex hull.
-        """
-        points = points.float()  # ensure float for cross-product
-        bs, num_pts, _ = points.shape
+    #     Returns:
+    #         Tensor: A binary mask (bool) of shape (batch_size, height, width) with True for
+    #         pixels inside the convex hull.
+    #     """
+    #     points = points.float()  # ensure float for cross-product
+    #     bs, num_pts, _ = points.shape
 
-        # Start with all True, then refine via cross-product checks
-        mask = torch.ones(
-            grid.shape[:-1], dtype=torch.bool, device=points.device
-        ).expand(bs, -1)
+    #     # Start with all True, then refine via cross-product checks
+    #     mask = torch.ones(
+    #         grid.shape[:-1], dtype=torch.bool, device=points.device
+    #     ).expand(bs, -1)
 
-        for i in range(num_pts):
-            p1 = points[:, i]
-            p2 = points[:, (i + 1) % num_pts]
-            edge = p2 - p1
-            to_pixel = grid - p1.view(bs, 1, -1)
+    #     for i in range(num_pts):
+    #         p1 = points[:, i]
+    #         p2 = points[:, (i + 1) % num_pts]
+    #         edge = p2 - p1
+    #         to_pixel = grid - p1.view(bs, 1, -1)
 
-            cross_product = (
-                edge[:, 0].view(bs, 1) * to_pixel[..., 1]
-                - edge[:, 1].view(bs, 1) * to_pixel[..., 0]
-            )
+    #         cross_product = (
+    #             edge[:, 0].view(bs, 1) * to_pixel[..., 1]
+    #             - edge[:, 1].view(bs, 1) * to_pixel[..., 0]
+    #         )
 
-            # Inside if cross_product <= 0 for all edges (assuming consistent winding)
-            mask = mask & (cross_product <= 0)
+    #         # Inside if cross_product <= 0 for all edges (assuming consistent winding)
+    #         mask = mask & (cross_product <= 0)
 
-        return mask
+    #     return mask
 
     def forward(
         self, src: torch.Tensor, edge_len: torch.Tensor, edge_theta: torch.Tensor
@@ -482,8 +482,6 @@ class LineApproxBlock(nn.Module):
         Forward pass that:
           1) Extracts features from src via conv & MLP,
           2) Predicts line parameters (left & right edges),
-          3) Constructs polygons based on those lines,
-          4) Draws them on src by subtracting/adding increments.
 
         Args:
             src (Tensor): shape (batch_size, channels, height, width), the input image/feature.
@@ -491,10 +489,10 @@ class LineApproxBlock(nn.Module):
             edge_theta (Tensor): shape (batch_size,), angle in degrees for each edge in the batch.
 
         Returns:
-            Tensor: Modified src after applying lines-based increments/decrements.
+            Tensor: Coordinates of points that form 2 straight lines to cut the src.
         """
 
-        bs, _, h, w = src.shape
+        bs, *_ = src.shape
 
         # 1) Feature extraction
         x = self._conv(src)
@@ -529,72 +527,75 @@ class LineApproxBlock(nn.Module):
         bottom_right = right_xy + edge_len.unsqueeze(1) * torch.stack(
             [torch.cos(right_theta), torch.sin(right_theta)], dim=1
         )
+        corner_coords = torch.stack([top_left, bottom_left, top_right, bottom_right], 1)
+        corner_coords[..., 0] = corner_coords[..., 0] / self._scale_factors[0]
+        corner_coords[..., 1] = corner_coords[..., 1] / self._scale_factors[1]
 
         # 5) Create masks and modify src
-        mask_left = self._make_polygon_mask(
-            top_left,
-            bottom_left,
-            self._src_bottom_left.expand(bs, -1),
-            self._src_top_left.expand(bs, -1),
-            *src.shape,
-        )
-        mask_right = self._make_polygon_mask(
-            top_right,
-            self._src_top_right.expand(bs, -1),
-            self._src_bottom_right.expand(bs, -1),
-            bottom_right,
-            *src.shape,
-        )
-        after_dec = src - (mask_left + mask_right) * self._decrement
+        # mask_left = self._make_polygon_mask(
+        #     top_left,
+        #     bottom_left,
+        #     self._src_bottom_left.expand(bs, -1),
+        #     self._src_top_left.expand(bs, -1),
+        #     *src.shape,
+        # )
+        # mask_right = self._make_polygon_mask(
+        #     top_right,
+        #     self._src_top_right.expand(bs, -1),
+        #     self._src_bottom_right.expand(bs, -1),
+        #     bottom_right,
+        #     *src.shape,
+        # )
+        # after_dec = src - (mask_left + mask_right) * self._decrement
 
         # mid points
-        mid_top = (top_left + top_right) / 2.0
-        mid_bottom = (bottom_left + bottom_right) / 2.0
+        # mid_top = (top_left + top_right) / 2.0
+        # mid_bottom = (bottom_left + bottom_right) / 2.0
 
         # mid-mid logic
-        mid_mid = (mid_top + mid_bottom) / 2.0
-        mid_top = (mid_top + mid_mid) / 2.0
-        mid_bottom = (mid_bottom + mid_mid) / 2.0
+        # mid_mid = (mid_top + mid_bottom) / 2.0
+        # mid_top = (mid_top + mid_mid) / 2.0
+        # mid_bottom = (mid_bottom + mid_mid) / 2.0
 
-        mask_left_2 = self._make_polygon_mask(
-            mid_top,
-            mid_bottom,
-            self._src_bottom_left.expand(bs, -1),
-            self._src_top_left.expand(bs, -1),
-            *src.shape,
-        )
-        mask_right_2 = self._make_polygon_mask(
-            mid_top,
-            self._src_top_right.expand(bs, -1),
-            self._src_bottom_right.expand(bs, -1),
-            mid_bottom,
-            *src.shape,
-        )
-        after_inc = after_dec + (mask_left_2 + mask_right_2) * self._increment
+        # mask_left_2 = self._make_polygon_mask(
+        #     mid_top,
+        #     mid_bottom,
+        #     self._src_bottom_left.expand(bs, -1),
+        #     self._src_top_left.expand(bs, -1),
+        #     *src.shape,
+        # )
+        # mask_right_2 = self._make_polygon_mask(
+        #     mid_top,
+        #     self._src_top_right.expand(bs, -1),
+        #     self._src_bottom_right.expand(bs, -1),
+        #     mid_bottom,
+        #     *src.shape,
+        # )
+        # after_inc = after_dec + (mask_left_2 + mask_right_2) * self._increment
 
-        return after_inc
+        return corner_coords
 
-    def _make_polygon_mask(
-        self,
-        pt1: torch.Tensor,
-        pt2: torch.Tensor,
-        pt3: torch.Tensor,
-        pt4: torch.Tensor,
-        bs: int,
-        ch: int,
-        h: int,
-        w: int,
-    ) -> torch.Tensor:
-        """
-        Create a float mask for a polygon given 4 corners. Re-shapes and broadcasts to (bs, ch, h, w).
-        """
-        poly_pts = torch.stack([pt1, pt2, pt3, pt4], dim=0).permute(
-            1, 0, 2
-        )  # shape (bs, 4, 2)
+    # def _make_polygon_mask(
+    #     self,
+    #     pt1: torch.Tensor,
+    #     pt2: torch.Tensor,
+    #     pt3: torch.Tensor,
+    #     pt4: torch.Tensor,
+    #     bs: int,
+    #     ch: int,
+    #     h: int,
+    #     w: int,
+    # ) -> torch.Tensor:
+    #     """
+    #     Create a float mask for a polygon given 4 corners. Re-shapes and broadcasts to (bs, ch, h, w).
+    #     """
+    #     poly_pts = torch.stack([pt1, pt2, pt3, pt4], dim=0).permute(
+    #         1, 0, 2
+    #     )  # shape (bs, 4, 2)
 
-        mask = self.convex_mask(self._grid, poly_pts)
-        mask = mask.reshape(bs, h, w).unsqueeze(1).expand(-1, ch, -1, -1)
-        return mask.float()
+    #     mask = self.convex_mask(self._grid, poly_pts)
+    #     mask = mask.reshape(bs, h, w).unsqueeze(1).expand(-1, ch, -1, -1)
+    #     return mask.float()
 
 
 if __name__ == "__main__":

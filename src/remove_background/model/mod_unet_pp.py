@@ -50,9 +50,14 @@ class Model(nn.Module):
 
         self._line_approx_block = LineApproxBlock(src_shape=src_shape)
 
-    def forward(self, src, edge_len, edge_theta):
+    def forward(
+        self, src: torch.Tensor, edge_length: torch.Tensor, edge_theta: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
         logits = self._backbone(src)[0]
-        return self._line_approx_block(logits, edge_len, edge_theta)
+        coords = self._line_approx_block(logits, edge_length, edge_theta)
+        outputs = {"logits": logits, "coords": coords}
+
+        return outputs
 
 
 class InterModel(nn.Module):
@@ -61,8 +66,11 @@ class InterModel(nn.Module):
 
         self._line_approx_block = LineApproxBlock()
 
-    def forward(self, src, edge_len, edge_theta):
-        return self._line_approx_block(src, edge_len, edge_theta)
+    def forward(self, src, edge_len, edge_theta) -> tuple[torch.Tensor, torch.Tensor]:
+        coords = self._line_approx_block(src, edge_len, edge_theta)
+
+        outputs = {"logits": src, "coords": coords}
+        return outputs
 
 
 class CheckpointedModel(nn.Module):
