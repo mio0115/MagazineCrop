@@ -152,6 +152,12 @@ def dev_parser():
         dest="edge_size",
         help="height and width for src",
     )
+    training_group.add_argument(
+        "--no-save",
+        action="store_true",
+        dest="no_save",
+        help="do not save model after training",
+    )
 
     # arguments for inference
     inference_group = parser.add_argument_group("Inference arguments")

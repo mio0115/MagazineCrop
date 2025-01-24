@@ -97,7 +97,8 @@ def train(
 
                 if avg_vloss < best_loss:
                     best_loss = avg_vloss
-                    torch.save(model, path_to_save)
+                    if not args.no_save:
+                        torch.save(model, path_to_save)
                     output_avg_vloss += "\tNew Record, Saved!"
                 print(output_avg_vloss)
                 print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
