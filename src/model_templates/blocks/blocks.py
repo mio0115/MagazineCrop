@@ -369,8 +369,8 @@ class LineApproxBlock(nn.Module):
     def __init__(
         self,
         in_channels: int = 1,
-        out_channels: int = 1024,
-        embed_channels: list[int] = (512, 128, 64),
+        conv_embed_channels: list[int] = (64, 128, 256, 512),
+        reg_embed_channels: list[int] = (512, 256, 128),
         src_shape: tuple[int, int] = (640, 640),
         *args,
         **kwargs,
@@ -378,24 +378,35 @@ class LineApproxBlock(nn.Module):
         super().__init__(*args, **kwargs)
 
         # 1) Convolutional feature extractor
-        self._conv = DoubleConvBlock(
-            in_channels=in_channels,
-            inter_channels=256,
-            out_channels=out_channels,
-            kernel_size=((1, 3), (1, 3)),
-            padding=((0, 1), (0, 1)),
-            stride=1,
-            activation_fn=nn.ReLU(),
-            bias=False,
+        self._conv = nn.Sequential(
+            DoubleConvBlock(
+                in_channels=in_channels,
+                inter_channels=conv_embed_channels[0],
+                out_channels=conv_embed_channels[1],
+                kernel_size=3,
+                padding=1,
+                stride=2,
+                bias=False,
+                activation_fn=nn.ReLU(),
+            ),
+            DoubleConvBlock(
+                in_channels=conv_embed_channels[1],
+                inter_channels=conv_embed_channels[2],
+                out_channels=conv_embed_channels[3],
+                kernel_size=3,
+                padding=1,
+                stride=2,
+                bias=False,
+                activation_fn=nn.ReLU(),
+            ),
         )
-
         # 2) Global average pool to reduce spatial dimension
         self._gap = nn.AdaptiveAvgPool2d(1)
 
         # 3) Regression MLP
-        embed_channels = [out_channels] + list(embed_channels)
+        reg_embed_channels = [conv_embed_channels[-1]] + list(reg_embed_channels)
         self._regression_head = nn.ModuleList()
-        for prev_chn, chn in zip(embed_channels[:-1], embed_channels[1:]):
+        for prev_chn, chn in zip(reg_embed_channels[:-1], reg_embed_channels[1:]):
             self._regression_head.append(
                 nn.Sequential(
                     nn.Linear(prev_chn, chn, bias=False),
@@ -405,7 +416,7 @@ class LineApproxBlock(nn.Module):
 
         # 4) Final line-approx layer: outputs 6 parameters (3 for left edge, 3 for right edge)
         self._lines_approx = nn.Sequential(
-            nn.Linear(embed_channels[-1] + 1, 6), nn.Sigmoid()  # +1 for edge_theta
+            nn.Linear(reg_embed_channels[-1] + 1, 6), nn.Sigmoid()  # +1 for edge_theta
         )
 
         # Register buffers for constant geometry references

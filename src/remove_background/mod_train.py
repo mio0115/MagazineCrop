@@ -118,9 +118,7 @@ if __name__ == "__main__":
     src_shape = (args.edge_size, args.edge_size)
     # model = build_iterative_model(num_iter=3, num_class=1)
     model = build_model(
-        path_to_backbone_ckpt=os.path.join(
-            args.checkpoint_dir, "rm_bg_iter_C2980_part_weights.pth"
-        ),
+        path_to_ckpt=args.checkpoint_dir,
         src_shape=src_shape,
     )
     optimizer = torch.optim.AdamW(

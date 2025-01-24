@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 from torch import nn
@@ -129,15 +130,13 @@ if __name__ == "__main__":
             os.getcwd(), "src", "remove_background", "checkpoints"
         )
     )
-    for key in model.state_dict().keys():
-        print(key)
 
-    img = torch.rand(size=(1, 4, 640, 640))
+    img = torch.rand(size=(2, 4, 640, 640))
     outputs = model(
         img,
-        edge_len=torch.tensor([100.0, 105.0], dtype=torch.float32),
+        edge_length=torch.tensor([100.0, 105.0], dtype=torch.float32),
         edge_theta=torch.tensor([95.0, 89.0], dtype=torch.float32),
     )
 
-    for output in outputs:
-        print(output.shape)
+    print(f'outputs logits: {outputs["logits"].shape}')
+    print(f'outputs coords: {outputs["coords"].shape}')
