@@ -162,44 +162,38 @@ def dev_parser():
     # arguments for inference
     inference_group = parser.add_argument_group("Inference arguments")
     inference_group.add_argument(
-        "--image_dir",
+        "--image-dir",
         type=str,
-        default="./data/example",
-        dest="path_to_image_dir",
-        help="path to the input image directory",
+        default="C2980",
+        dest="image_dir",
+        help="name of the image directory to inference",
     )
     inference_group.add_argument(
         "--image-name", type=str, default="no1-0818_132552.tiff", dest="image_name"
     )
     inference_group.add_argument(
-        "--model-dir",
-        type=str,
-        default="./src/remove_background/checkpoints",
-        dest="path_to_model_dir",
-        help="path to the directory placed trained model",
-    )
-    inference_group.add_argument(
-        "--model-name",
-        type=str,
-        default="model.pth",
-        dest="model_name",
-        help="name of the model",
-    )
-    inference_group.add_argument(
         "--output-dir",
         type=str,
         default="./data/output",
-        dest="path_to_output_dir",
+        dest="output_dir",
         help="path to the output directory",
     )
     inference_group.add_argument(
         "--output-name", type=str, default="image.jpg", dest="output_as"
     )
     inference_group.add_argument(
-        "--rm-bg-model-name", type=str, default="rm_bg_entire_iter.pth"
+        "--rm-bg-model",
+        type=str,
+        dest="rm_bg_model",
+        help="path to remove-background model. \
+            For example, ./src/remove_background/checkpoints/rm_bg_model.pth",
     )
     inference_group.add_argument(
-        "--sp-pg-model-name", type=str, default="sp_pg_mod.pth"
+        "--sp-pg-model",
+        type=str,
+        dest="sp_pg_model",
+        help="path to split-page model. \
+            For example, ./src/split_page/checkpoints/sp_pg_model.pth",
     )
 
     parser.add_argument(
