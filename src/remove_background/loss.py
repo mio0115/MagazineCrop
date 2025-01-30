@@ -182,7 +182,7 @@ class ModComboLoss(nn.Module):
         super(ModComboLoss, self).__init__(*args, **kwargs)
 
         self._logits_loss_fn = ComboLoss(number_of_classes=number_of_classes, alpha=0.5)
-        self._coords_loss_fn = nn.MSELoss(reduction="mean")
+        self._coords_loss_fn = nn.SmoothL1Loss(reduction="mean", beta=0.1)
         self._factor = factor
 
     def forward(
@@ -202,4 +202,4 @@ class ModComboLoss(nn.Module):
         )
         loss = self._factor * logits_loss + (1 - self._factor) * coords_loss
 
-        return loss
+        return loss, logits_loss, coords_loss

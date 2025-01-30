@@ -49,16 +49,14 @@ class Model(nn.Module):
             bias=False,
         )
 
-        self._line_approx_block = LineApproxBlock(
-            in_channels=self._backbone.out_channels, src_shape=src_shape
-        )
+        self._line_approx_block = LineApproxBlock(in_channels=1, src_shape=src_shape)
 
     def forward(
         self, src: torch.Tensor, edge_length: torch.Tensor, edge_theta: torch.Tensor
     ) -> dict[str, torch.Tensor]:
         raws = self._backbone(src)[0]
-        coords = self._line_approx_block(raws, edge_length, edge_theta)
         logits = self._to_logits(raws)
+        coords = self._line_approx_block(logits, edge_length, edge_theta)
         outputs = {"logits": logits, "coords": coords}
 
         return outputs

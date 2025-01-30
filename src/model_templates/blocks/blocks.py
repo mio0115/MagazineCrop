@@ -356,8 +356,7 @@ class ChannelScaleAttention(nn.Module):
 
 class LineApproxBlock(nn.Module):
     """
-    A block that approximates lines on the left and right edges of a scanned page,
-    modifying the input tensor (src) based on those lines.
+    A block that approximates lines on the left and right edges of a scanned page.
 
     Args:
         in_channels (int): Number of input channels.
@@ -369,8 +368,8 @@ class LineApproxBlock(nn.Module):
     def __init__(
         self,
         in_channels: int = 1,
-        conv_embed_channels: list[int] = (64, 128, 256, 512),
-        reg_embed_channels: list[int] = (512, 256, 128),
+        conv_embed_channels: list[int] = (32, 64, 128, 256),
+        reg_embed_channels: list[int] = (256, 128, 64),
         src_shape: tuple[int, int] = (640, 640),
         *args,
         **kwargs,
@@ -387,7 +386,7 @@ class LineApproxBlock(nn.Module):
                 padding=1,
                 stride=2,
                 bias=False,
-                activation_fn=nn.ReLU(),
+                activation_fn=nn.LeakyReLU(),
             ),
             DoubleConvBlock(
                 in_channels=conv_embed_channels[1],
@@ -397,7 +396,7 @@ class LineApproxBlock(nn.Module):
                 padding=1,
                 stride=2,
                 bias=False,
-                activation_fn=nn.ReLU(),
+                activation_fn=nn.LeakyReLU(),
             ),
         )
         # 2) Global average pool to reduce spatial dimension
@@ -409,82 +408,21 @@ class LineApproxBlock(nn.Module):
         for prev_chn, chn in zip(reg_embed_channels[:-1], reg_embed_channels[1:]):
             self._regression_head.append(
                 nn.Sequential(
-                    nn.Linear(prev_chn, chn, bias=False),
-                    nn.ReLU(),
+                    nn.Linear(prev_chn, chn, bias=True), nn.LeakyReLU(), nn.Dropout(0.5)
                 )
             )
 
         # 4) Final line-approx layer: outputs 6 parameters (3 for left edge, 3 for right edge)
         self._lines_approx = nn.Sequential(
-            nn.Linear(reg_embed_channels[-1] + 1, 6), nn.Sigmoid()  # +1 for edge_theta
+            nn.Linear(reg_embed_channels[-1], 6), nn.Sigmoid()  # +1 for edge_theta
         )
+        self._theta_approx = nn.Sequential(nn.Linear(2 + 1, 2), nn.Sigmoid())
 
         # Register buffers for constant geometry references
         w, h = src_shape
-        # x_coords = torch.arange(w)
-        # y_coords = torch.arange(h)
-        # grid_x, grid_y = torch.meshgrid(x_coords, y_coords, indexing="xy")
-
-        # self.register_buffer(
-        #     "_src_top_left", torch.tensor([0, 0], dtype=torch.float32).view(1, -1)
-        # )
-        # self.register_buffer(
-        #     "_src_bottom_left", torch.tensor([0, h], dtype=torch.float32).view(1, -1)
-        # )
-        # self.register_buffer(
-        #     "_src_top_right", torch.tensor([w, 0], dtype=torch.float32).view(1, -1)
-        # )
-        # self.register_buffer(
-        #     "_src_bottom_right", torch.tensor([w, h], dtype=torch.float32).view(1, -1)
-        # )
-        # self.register_buffer(
-        #     "_grid", torch.stack([grid_x, grid_y], dim=-1)[None, ...].flatten(1, 2)
-        # )
-        # self.register_buffer(
-        #     "_increment", torch.tensor(5.0, dtype=torch.float32, requires_grad=False)
-        # )
-        # self.register_buffer(
-        #     "_decrement", torch.tensor(5.0, dtype=torch.float32, requires_grad=False)
-        # )
         self.register_buffer(
-            "_scale_factors", torch.tensor([w, h], dtype=torch.float32)
+            "_scale_factors", torch.tensor([w, h], dtype=torch.float32).unsqueeze(0)
         )
-
-    # def convex_mask(self, grid: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     Generate a binary mask for the convex hull defined by 4 points, using cross-product tests.
-
-    #     Args:
-    #         grid (Tensor): shape (batch_size, height*width, 2), pixel coordinates.
-    #         points (Tensor): shape (batch_size, 4, 2), the polygon corners as (x, y).
-
-    #     Returns:
-    #         Tensor: A binary mask (bool) of shape (batch_size, height, width) with True for
-    #         pixels inside the convex hull.
-    #     """
-    #     points = points.float()  # ensure float for cross-product
-    #     bs, num_pts, _ = points.shape
-
-    #     # Start with all True, then refine via cross-product checks
-    #     mask = torch.ones(
-    #         grid.shape[:-1], dtype=torch.bool, device=points.device
-    #     ).expand(bs, -1)
-
-    #     for i in range(num_pts):
-    #         p1 = points[:, i]
-    #         p2 = points[:, (i + 1) % num_pts]
-    #         edge = p2 - p1
-    #         to_pixel = grid - p1.view(bs, 1, -1)
-
-    #         cross_product = (
-    #             edge[:, 0].view(bs, 1) * to_pixel[..., 1]
-    #             - edge[:, 1].view(bs, 1) * to_pixel[..., 0]
-    #         )
-
-    #         # Inside if cross_product <= 0 for all edges (assuming consistent winding)
-    #         mask = mask & (cross_product <= 0)
-
-    #     return mask
 
     def forward(
         self, src: torch.Tensor, edge_len: torch.Tensor, edge_theta: torch.Tensor
@@ -497,7 +435,7 @@ class LineApproxBlock(nn.Module):
         Args:
             src (Tensor): shape (batch_size, channels, height, width), the input image/feature.
             edge_len (Tensor): shape (batch_size,), length for each edge in the batch.
-            edge_theta (Tensor): shape (batch_size,), angle in degrees for each edge in the batch.
+            edge_theta (Tensor): shape (batch_size,), angle in radians for each edge in the batch.
 
         Returns:
             Tensor: Coordinates of points that form 2 straight lines to cut the src.
@@ -507,7 +445,7 @@ class LineApproxBlock(nn.Module):
 
         # 1) Feature extraction
         x = self._conv(src)
-        x = self._gap(x).view(bs, -1)
+        x = self._gap(x).reshape(bs, -1)
 
         # 2) Pass through regression MLP
         for layer in self._regression_head:
@@ -515,98 +453,43 @@ class LineApproxBlock(nn.Module):
 
         # 3) Lines approximation
         #   - We also feed in the normalized angle (edge_theta / 180).
-        angle_input = edge_theta.view(-1, 1) / 180.0
-        coords = self._lines_approx(torch.cat([x, angle_input], dim=1))
+        angle_input = edge_theta.unsqueeze(1)
+        coords = self._lines_approx(x)
 
-        # coords -> 6 params: left( x, y, ??? ) + right( x, y, ??? )
+        # coords -> 6 params: left( x, y, theta ) + right( x, y, theta )
         left_side, right_side = torch.chunk(coords, chunks=2, dim=1)
 
         # Scale xy by image size
-        left_xy = left_side[:, :2] * self._scale_factors.view(1, 2)
-        right_xy = right_side[:, :2] * self._scale_factors.view(1, 2)
+        left_xy = left_side[:, :2] * self._scale_factors
+        right_xy = right_side[:, :2] * self._scale_factors
 
-        # Convert angles from [0..180]
-        left_theta = 180.0 - left_side[:, -1] * 180.0
-        right_theta = 180.0 - right_side[:, -1] * 180.0
+        # Convert angles from [0..pi]
+        left_theta = 1 - left_side[:, -1]
+        right_theta = 1 - right_side[:, -1]
+
+        theta = (
+            self._theta_approx(
+                torch.cat(
+                    [left_theta.unsqueeze(1), right_theta.unsqueeze(1), angle_input], 1
+                )
+            )
+            * torch.pi
+        )
+        left_theta, right_theta = torch.chunk(theta, chunks=2, dim=1)
 
         # 4) Corner points for left, right
         top_left = left_xy
-        bottom_left = left_xy + edge_len.unsqueeze(1) * torch.stack(
+        bottom_left = left_xy + edge_len.unsqueeze(1) * torch.cat(
             [torch.cos(left_theta), torch.sin(left_theta)], dim=1
         )
         top_right = right_xy
-        bottom_right = right_xy + edge_len.unsqueeze(1) * torch.stack(
+        bottom_right = right_xy + edge_len.unsqueeze(1) * torch.cat(
             [torch.cos(right_theta), torch.sin(right_theta)], dim=1
         )
         corner_coords = torch.stack([top_left, bottom_left, top_right, bottom_right], 1)
-        corner_coords[..., 0] = corner_coords[..., 0] / self._scale_factors[0]
-        corner_coords[..., 1] = corner_coords[..., 1] / self._scale_factors[1]
-
-        # 5) Create masks and modify src
-        # mask_left = self._make_polygon_mask(
-        #     top_left,
-        #     bottom_left,
-        #     self._src_bottom_left.expand(bs, -1),
-        #     self._src_top_left.expand(bs, -1),
-        #     *src.shape,
-        # )
-        # mask_right = self._make_polygon_mask(
-        #     top_right,
-        #     self._src_top_right.expand(bs, -1),
-        #     self._src_bottom_right.expand(bs, -1),
-        #     bottom_right,
-        #     *src.shape,
-        # )
-        # after_dec = src - (mask_left + mask_right) * self._decrement
-
-        # mid points
-        # mid_top = (top_left + top_right) / 2.0
-        # mid_bottom = (bottom_left + bottom_right) / 2.0
-
-        # mid-mid logic
-        # mid_mid = (mid_top + mid_bottom) / 2.0
-        # mid_top = (mid_top + mid_mid) / 2.0
-        # mid_bottom = (mid_bottom + mid_mid) / 2.0
-
-        # mask_left_2 = self._make_polygon_mask(
-        #     mid_top,
-        #     mid_bottom,
-        #     self._src_bottom_left.expand(bs, -1),
-        #     self._src_top_left.expand(bs, -1),
-        #     *src.shape,
-        # )
-        # mask_right_2 = self._make_polygon_mask(
-        #     mid_top,
-        #     self._src_top_right.expand(bs, -1),
-        #     self._src_bottom_right.expand(bs, -1),
-        #     mid_bottom,
-        #     *src.shape,
-        # )
-        # after_inc = after_dec + (mask_left_2 + mask_right_2) * self._increment
+        corner_coords = corner_coords / self._scale_factors.unsqueeze(1)
 
         return corner_coords
-
-    # def _make_polygon_mask(
-    #     self,
-    #     pt1: torch.Tensor,
-    #     pt2: torch.Tensor,
-    #     pt3: torch.Tensor,
-    #     pt4: torch.Tensor,
-    #     bs: int,
-    #     ch: int,
-    #     h: int,
-    #     w: int,
-    # ) -> torch.Tensor:
-    #     """
-    #     Create a float mask for a polygon given 4 corners. Re-shapes and broadcasts to (bs, ch, h, w).
-    #     """
-    #     poly_pts = torch.stack([pt1, pt2, pt3, pt4], dim=0).permute(
-    #         1, 0, 2
-    #     )  # shape (bs, 4, 2)
-
-    #     mask = self.convex_mask(self._grid, poly_pts)
-    #     mask = mask.reshape(bs, h, w).unsqueeze(1).expand(-1, ch, -1, -1)
-    #     return mask.float()
 
 
 if __name__ == "__main__":

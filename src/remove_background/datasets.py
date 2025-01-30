@@ -324,7 +324,7 @@ class ModMagazineCropDataset(Dataset):
         pil_image = Image.open(
             os.path.join(self._path_to_root, annotation["imagePath"])
         ).convert("RGB")
-        orig_image = np.array(pil_image, dtype=np.uint8)[..., ::-1].copy()
+        orig_image = np.flip(np.array(pil_image, dtype=np.uint8), -1)
         gray_image = cv2.cvtColor(orig_image, cv2.COLOR_BGR2GRAY)
         gray_image = cv2.equalizeHist(gray_image)[..., None]
 
@@ -335,6 +335,16 @@ class ModMagazineCropDataset(Dataset):
             height=annotation["imageHeight"],
             width=annotation["imageWidth"],
         )
+
+        # print(orig_image.shape)
+        # cv2.namedWindow("image", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("image", 1024, 1024)
+
+        # cv2.line(orig_image, tuple(edges[0]), tuple(edges[1]), (0, 255, 0), 2)
+        # cv2.line(orig_image, tuple(edges[2]), tuple(edges[3]), (0, 0, 255), 2)
+        # cv2.imshow("image", orig_image)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
         edge_len, edge_theta = edge_annotation["edge_length"], edge_annotation["theta"]
         if self._transforms is not None:

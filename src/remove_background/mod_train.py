@@ -38,7 +38,7 @@ def train(
     valid: bool = True,
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[5, 10, 15])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[8, 18])
     model = model.to(args.device)
     path_to_save = os.path.join(args.checkpoint_dir, args.save_as)
 
@@ -60,7 +60,7 @@ def train(
                 edge_theta=inputs["theta"],
             )
 
-            loss = loss_fn(outputs=outputs, targets=targets, weights=weights)
+            loss, *_ = loss_fn(outputs=outputs, targets=targets, weights=weights)
             running_loss += loss.item()
             loss.backward()
             optimizer.step()
@@ -86,17 +86,23 @@ def train(
                         edge_theta=inputs["theta"],
                     )
 
-                    loss = loss_fn(outputs=outputs, targets=targets, weights=weights)
+                    loss, *_ = loss_fn(
+                        outputs=outputs, targets=targets, weights=weights
+                    )
 
                     running_vloss += loss.item()
 
                 avg_vloss = running_vloss / (ind + 1)
+                combined_loss = avg_loss * 0.2 + avg_vloss * 0.8
 
                 output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.6f}\n"
                 output_avg_vloss += "\n"
 
-                if avg_vloss < best_loss:
-                    best_loss = avg_vloss
+                output_avg_vloss += f"\t{'Combined Loss':<11}: {combined_loss:.6f}\n"
+                output_avg_vloss += "\n"
+
+                if combined_loss < best_loss:
+                    best_loss = combined_loss
                     if not args.no_save:
                         torch.save(model, path_to_save)
                     output_avg_vloss += "\tNew Record, Saved!"
@@ -125,18 +131,19 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(
         [
             {"params": model._backbone.parameters(), "lr": args.lr_backbone},
+            {"params": model._to_logits.parameters(), "lr": args.lr_backbone},
             {
                 "params": [
                     param
                     for name, param in model.named_parameters()
-                    if "_backbone" not in name
+                    if "_backbone" not in name and "_to_logits" not in name
                 ]
             },
         ],
         lr=args.learning_rate,
     )
 
-    loss_fn = ModComboLoss(number_of_classes=1)
+    loss_fn = ModComboLoss(number_of_classes=1, factor=0.3)
 
     if args.resume:
         model = torch.load(
