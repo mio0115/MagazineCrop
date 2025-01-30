@@ -22,26 +22,34 @@ class Rotate(object):
         """
         self._random_angle_range = random_angle_range
 
-    def rotate_points(self, points, angle):
+    def rotate_points(
+        self, points: np.ndarray, angle: float, center: np.ndarray
+    ) -> np.ndarray:
         """
-        Rotate points by a given angle around the origin.
+        Rotate points by a given angle around the center.
 
         Args:
             points (np.ndarray): An array of shape (N, 2) representing N points.
             angle (float): The angle in degrees to rotate the points.
+            center (np.ndarray): The center point of the rotation.
 
         Returns:
             np.ndarray: The rotated points.
         """
+        # Shift the points so that the center is at the origin.
+        shifted = points - center
         # Convert the angle to radians.
         theta = np.deg2rad(angle)
         # Create the rotation matrix.
         cos_t = np.cos(theta)
         sin_t = np.sin(theta)
         # Apply the rotation matrix to the points.
-        new_x = points[:, 0] * cos_t - points[:, 1] * sin_t
-        new_y = points[:, 0] * sin_t + points[:, 1] * cos_t
-        return np.stack([new_x, new_y], axis=1)
+        rotated_x = shifted[:, 0] * cos_t - shifted[:, 1] * sin_t
+        rotated_y = shifted[:, 0] * sin_t + shifted[:, 1] * cos_t
+
+        rotated_shifted = np.stack([rotated_x, rotated_y], axis=1)
+
+        return rotated_shifted + center
 
     def __call__(
         self,
@@ -77,7 +85,9 @@ class Rotate(object):
         rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 
         rotated_edge_theta = edge_theta + angle
-        rotated_edges = self.rotate_points(edges, angle)
+        rotated_edges = self.rotate_points(
+            edges, -angle, np.array(center, dtype=np.float32).reshape(1, -1)
+        )
 
         # Rotate the image with (intersection_x, height//2) as the center
         rotated_img = cv2.warpAffine(img, rot_mat, (width, height))
@@ -91,6 +101,19 @@ class Rotate(object):
         rotated_weights = cv2.warpAffine(
             weights, rot_mat, (width, height), flags=cv2.INTER_AREA
         )
+
+        # cv2.namedWindow("rotated_img", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("rotated_img", 1024, 1024)
+
+        # print(edge_theta, rotated_edge_theta)
+        # tmp_img = rotated_img.copy()
+        # print(np.reshape(rotated_edges, shape=(2, 2, 2)).shape)
+        # for edge in np.reshape(rotated_edges, shape=(2, 2, 2)):
+        #     tmp_edge = edge.astype(np.int32)
+        #     cv2.line(tmp_img, tmp_edge[0], tmp_edge[1], (0, 255, 0), 2)
+        # cv2.imshow("rotated_img", tmp_img)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
         # If the original image was (H, W, 1) and after rotation is (H, W),
         # we add back a dummy channel to match dimensions if needed.
@@ -107,6 +130,264 @@ class Rotate(object):
         )
 
 
+class RandomShift:
+    """
+    Randomly shifts an image, mask, and weights array if there is foreground
+    near the edges, moving the content in one of four directions: top, bottom,
+    left, or right.
+    """
+
+    def __init__(self, not_shift_prob: float = 0.5, background_label: int = 0):
+        """
+        Args:
+            not_shift_prob (float): Probability of NOT performing a shift.
+            background_label (int): Label for background in the target mask.
+        """
+        self.not_shift_prob = not_shift_prob
+        self.background_label = background_label
+
+    def _foreground_bbox(self, tgt: np.ndarray) -> tuple[int, int, int, int]:
+        """
+        Finds the bounding box of the foreground in 'tgt'.
+        Returns (top, bottom, left, right).
+        If the entire mask is background, returns (0, H-1, 0, W-1).
+        """
+        height, width = tgt.shape[:2]
+
+        top = 0
+        while top < height and tgt[top, :].max() == self.background_label:
+            top += 1
+
+        bottom = height - 1
+        while bottom >= 0 and tgt[bottom, :].max() == self.background_label:
+            bottom -= 1
+
+        left = 0
+        while left < width and tgt[:, left].max() == self.background_label:
+            left += 1
+
+        right = width - 1
+        while right >= 0 and tgt[:, right].max() == self.background_label:
+            right -= 1
+
+        # If entire mask is background, clamp to full image.
+        if top >= bottom or left >= right:
+            return (0, height - 1, 0, width - 1)
+        return (top, bottom, left, right)
+
+    def _shift_up(self, img, tgt, weights, edges, shift):
+        """
+        Shift image 'up' by 'shift' rows.
+        """
+        h, w = img.shape[:2]
+        # Assume img is (H, W, C)
+        img = np.pad(
+            img[shift:, :, :],
+            pad_width=((0, shift), (0, 0), (0, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+        tgt = np.pad(
+            tgt[shift:, :],
+            pad_width=((0, shift), (0, 0)),
+            mode="constant",
+            constant_values=self.background_label,
+        )
+        weights = np.pad(
+            weights[shift:, :],
+            pad_width=((0, shift), (0, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+        # Move edges up
+        edges[:, 1] -= shift
+        return img, tgt, weights, edges
+
+    def _shift_down(self, img, tgt, weights, edges, shift):
+        """
+        Shift image 'down' by 'shift' rows.
+        """
+        h, w = img.shape[:2]
+        img = np.pad(
+            img[:-shift, :, :],
+            pad_width=((shift, 0), (0, 0), (0, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+        tgt = np.pad(
+            tgt[:-shift, :],
+            pad_width=((shift, 0), (0, 0)),
+            mode="constant",
+            constant_values=self.background_label,
+        )
+        weights = np.pad(
+            weights[:-shift, :],
+            pad_width=((shift, 0), (0, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+        edges[:, 1] += shift
+        return img, tgt, weights, edges
+
+    def _shift_left(self, img, tgt, weights, edges, shift):
+        """
+        Shift image 'left' by 'shift' columns.
+        """
+        h, w = img.shape[:2]
+        img = np.pad(
+            img[:, shift:, :],
+            pad_width=((0, 0), (0, shift), (0, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+        tgt = np.pad(
+            tgt[:, shift:],
+            pad_width=((0, 0), (0, shift)),
+            mode="constant",
+            constant_values=self.background_label,
+        )
+        weights = np.pad(
+            weights[:, shift:],
+            pad_width=((0, 0), (0, shift)),
+            mode="constant",
+            constant_values=0,
+        )
+        edges[:, 0] -= shift
+        return img, tgt, weights, edges
+
+    def _shift_right(self, img, tgt, weights, edges, shift):
+        """
+        Shift image 'right' by 'shift' columns.
+        """
+        h, w = img.shape[:2]
+        img = np.pad(
+            img[:, :-shift, :],
+            pad_width=((0, 0), (shift, 0), (0, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+        tgt = np.pad(
+            tgt[:, :-shift],
+            pad_width=((0, 0), (shift, 0)),
+            mode="constant",
+            constant_values=self.background_label,
+        )
+        weights = np.pad(
+            weights[:, :-shift],
+            pad_width=((0, 0), (shift, 0)),
+            mode="constant",
+            constant_values=0,
+        )
+        edges[:, 0] += shift
+        return img, tgt, weights, edges
+
+    def __call__(
+        self,
+        img: np.ndarray,
+        tgt: np.ndarray,
+        weights: np.ndarray,
+        edge_len: float,
+        edge_theta: float,
+        edges: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, np.ndarray]:
+        """
+        Possibly shifts the foreground content up/down/left/right if
+        there is background border. Probability of shift is (1 - not_shift_prob).
+        """
+        h, w = img.shape[:2]
+        top, bottom, left, right = self._foreground_bbox(tgt)
+        top_space = top
+        bottom_space = (h - 1) - bottom
+        left_space = left
+        right_space = (w - 1) - right
+
+        # If the entire mask is foreground, or no background border around it,
+        # or random says do not shift => skip shifting
+        if (
+            top_space == 0
+            and bottom_space == 0
+            and left_space == 0
+            and right_space == 0
+        ) or (np.random.rand() < self.not_shift_prob):
+            return img, tgt, weights, edge_len, edge_theta, edges
+
+        # Decide vertical shift direction
+        top_bottom_choice = None
+        if top_space > 0 or bottom_space > 0:
+            if top_space == 0:
+                top_bottom_choice = 1  # must shift down
+            elif bottom_space == 0:
+                top_bottom_choice = 0  # must shift up
+            else:
+                top_bottom_choice = np.random.choice(
+                    [0, 1],
+                    p=[
+                        top_space / (top_space + bottom_space),
+                        bottom_space / (top_space + bottom_space),
+                    ],
+                )  # up or down
+
+        # Decide horizontal shift direction
+        left_right_choice = None
+        if left_space > 0 or right_space > 0:
+            if left_space == 0:
+                left_right_choice = 1  # must shift right
+            elif right_space == 0:
+                left_right_choice = 0  # must shift left
+            else:
+                left_right_choice = np.random.choice(
+                    [0, 1],
+                    p=[
+                        left_space / (left_space + right_space),
+                        right_space / (left_space + right_space),
+                    ],
+                )  # left or right
+
+        # Execute vertical shift
+        if top_bottom_choice == 0:
+            # shift up
+            shift_x = np.random.randint(top_space // 4, top_space + 1)
+            img, tgt, weights, edges = self._shift_up(img, tgt, weights, edges, shift_x)
+        elif top_bottom_choice == 1:
+            # shift down
+            shift_x = np.random.randint(bottom_space // 4, bottom_space + 1)
+            img, tgt, weights, edges = self._shift_down(
+                img, tgt, weights, edges, shift_x
+            )
+
+        # Execute horizontal shift
+        if left_right_choice == 0:
+            # shift left
+            shift_y = np.random.randint(left_space // 4, left_space + 1)
+            img, tgt, weights, edges = self._shift_left(
+                img, tgt, weights, edges, shift_y
+            )
+        elif left_right_choice == 1:
+            # shift right
+            shift_y = np.random.randint(right_space // 4, right_space + 1)
+            img, tgt, weights, edges = self._shift_right(
+                img, tgt, weights, edges, shift_y
+            )
+
+        # Finally, clamp edges
+        edges[:, 0] = np.clip(edges[:, 0], 0, w - 1)
+        edges[:, 1] = np.clip(edges[:, 1], 0, h - 1)
+
+        # cv2.namedWindow("shifted img", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("shifted img", 1024, 1024)
+
+        # tmp_img = img.copy()
+        # print(np.reshape(edges, shape=(2, 2, 2)).shape)
+        # for edge in np.reshape(edges, shape=(2, 2, 2)):
+        #     tmp_edge = edge.astype(np.int32)
+        #     cv2.line(tmp_img, tmp_edge[0], tmp_edge[1], (0, 255, 0), 2)
+        # cv2.imshow("shifted img", tmp_img)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
+        return img, tgt, weights, edge_len, edge_theta, edges
+
+
 class RandomHorizontalFlip(object):
     """
     A transform that randomly flips the image, target mask, and weights
@@ -120,6 +401,7 @@ class RandomHorizontalFlip(object):
                 If a random number is >= this value, we perform the flip.
         """
         self._not_flip_prob = not_flip_prob
+        self._flipped_order = [2, 3, 0, 1]
 
     def __call__(
         self,
@@ -150,7 +432,10 @@ class RandomHorizontalFlip(object):
             tgt = np.flip(tgt, axis=1)
             weights = np.flip(weights, axis=1)
             edge_theta = 180 - edge_theta
+
             edges[:, 0] = width - edges[:, 0]
+            # arange the edges
+            edges = edges[self._flipped_order]
 
         return img, tgt, weights, edge_len, edge_theta, edges
 
@@ -168,6 +453,7 @@ class RandomVerticalFlip(object):
                 If a random number is >= this value, we perform the flip.
         """
         self._not_flip_prob = not_flip_prob
+        self._flipped_order = [1, 0, 3, 2]
 
     def __call__(
         self,
@@ -188,7 +474,10 @@ class RandomVerticalFlip(object):
             tgt = np.flip(tgt, axis=0)
             weights = np.flip(weights, axis=0)
             edge_theta = 180 - edge_theta
+
             edges[:, 1] = height - edges[:, 1]
+            # Reorder the edges after flipping
+            edges = edges[self._flipped_order]
 
         return img, tgt, weights, edge_len, edge_theta, edges
 
@@ -209,7 +498,7 @@ class Resize(object):
     ):
         """
         Args:
-            size (tuple[int, int]): The target (height, width) for resizing.
+            size (tuple[int, int]): The target (width, height) for resizing.
         """
         self._size = size
         self._resize_img = resize_img
@@ -240,9 +529,14 @@ class Resize(object):
             (resized_img, resized_tgt, resized_weights, edge_len, edge_theta, edges): Arrays resized to self._size.
         """
         if self._resize_img:
-            resized_img, _ = resize_with_aspect_ratio(img, target_size=self._size)
-            edges[:, 0] = self._size[1] * edges[:, 0] / img.shape[1]
-            edges[:, 1] = self._size[0] * edges[:, 1] / img.shape[0]
+            resized_img, _, paddings = resize_with_aspect_ratio(
+                img, target_size=self._size, return_pad=True
+            )
+            # Also compute corresponding coordinates of edges in resized image
+            top, bottom, left, right = paddings
+            gt_size = (self._size[0] - (left + right), self._size[1] - (top + bottom))
+            edges[:, 0] = edges[:, 0] * gt_size[0] / img.shape[1] + left
+            edges[:, 1] = edges[:, 1] * gt_size[1] / img.shape[0] + top
         else:
             resized_img = img
         if self._resize_tgt:
@@ -272,7 +566,7 @@ class ArrayToTensor(object):
 
     def __init__(self, normalize=True, size: tuple[int, int] = (1024, 1024)):
         self._normalize = normalize
-        self._size = size
+        self._size = size  # (height, width)
 
     def __call__(
         self,
@@ -308,7 +602,9 @@ class ArrayToTensor(object):
         tgt = torch.as_tensor(tgt.copy(), dtype=torch.float32)
         weights = torch.as_tensor(weights.copy(), dtype=torch.float32)
         edge_len = torch.tensor(edge_len, dtype=torch.float32)
-        edge_theta = torch.tensor(edge_theta, dtype=torch.float32)
+
+        edge_radius = np.deg2rad(edge_theta) / np.pi
+        edge_theta = torch.tensor(edge_radius, dtype=torch.float32)
 
         edges = torch.tensor(edges, dtype=torch.float32)
         edges[..., 0] = edges[..., 0] / self._size[1]
@@ -371,8 +667,9 @@ def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024))
         tr_fn = v2.Compose(
             [
                 Rotate(random_angle_range=(-5, 5)),
-                RandomHorizontalFlip(not_flip_prob=0.6),
+                RandomHorizontalFlip(not_flip_prob=0.5),
                 RandomVerticalFlip(not_flip_prob=0.9),
+                RandomShift(not_shift_prob=0.25, background_label=0),
                 Resize(size=size),
                 MaskToBinary(foreground_label=2),
                 ArrayToTensor(normalize=True, size=size),
