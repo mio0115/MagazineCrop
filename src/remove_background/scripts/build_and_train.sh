@@ -11,7 +11,6 @@ LEARNING_RATE_BACKBONE=1e-4
 AUGMENT_FACTOR=10
 EPOCHS=10
 BATCH_SIZE=12
-RESUME_FROM="model_weights.pth"
 DEVICE="cuda"
 SAVE_AS="rm_bg_unetpp.pth"
 CLS_NUM=20
@@ -23,6 +22,7 @@ DATALOADER_WORKERS=3
 EDGE_SIZE=640
 TRAIN=""
 RESUME=""
+NO_SAVE=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -46,6 +46,7 @@ while [[ "$#" -gt 0 ]]; do
         --checkpoint-dir) CKPT_DIR="$2"; shift;;
         --module-name) MODULE_NAME="$2"; shift;;
         --edge-size) EDGE_SIZE="$2"; shift;;
+        --no-save) NO_SAVE="--no-save" ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -83,6 +84,7 @@ docker run --rm -it \
             --edge-size=${EDGE_SIZE} \
             ${TRAIN} \
             ${RESUME} \
+            ${NO_SAVE} \
 
 if [ $? -ne 0 ]; then
     echo "Docker run failed. Exiting."
