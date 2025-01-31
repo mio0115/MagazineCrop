@@ -678,6 +678,7 @@ def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024))
     elif split.lower() == "valid":
         tr_fn = v2.Compose(
             [
+                RandomShift(not_shift_prob=0.25, background_label=0),
                 Resize(size=size),
                 MaskToBinary(foreground_label=2),
                 ArrayToTensor(normalize=True, size=size),
