@@ -414,9 +414,9 @@ class LineApproxBlock(nn.Module):
 
         # 4) Final line-approx layer: outputs 6 parameters (3 for left edge, 3 for right edge)
         self._lines_approx = nn.Sequential(
-            nn.Linear(reg_embed_channels[-1], 6), nn.Sigmoid()  # +1 for edge_theta
+            nn.Linear(reg_embed_channels[-1], 5), nn.Sigmoid()  # +1 for edge_theta
         )
-        self._theta_approx = nn.Sequential(nn.Linear(2 + 1, 2), nn.Sigmoid())
+        self._theta_approx = nn.Sequential(nn.Linear(1 + 1, 1), nn.Sigmoid())
 
         # Register buffers for constant geometry references
         w, h = src_shape
@@ -457,34 +457,28 @@ class LineApproxBlock(nn.Module):
         coords = self._lines_approx(x)
 
         # coords -> 6 params: left( x, y, theta ) + right( x, y, theta )
-        left_side, right_side = torch.chunk(coords, chunks=2, dim=1)
+        left_side, right_side = torch.chunk(coords[..., :-1], chunks=2, dim=1)
 
         # Scale xy by image size
         left_xy = left_side[:, :2] * self._scale_factors
         right_xy = right_side[:, :2] * self._scale_factors
 
         # Convert angles from [0..pi]
-        left_theta = 1 - left_side[:, -1]
-        right_theta = 1 - right_side[:, -1]
+        theta = 1 - coords[..., -1]
 
         theta = (
-            self._theta_approx(
-                torch.cat(
-                    [left_theta.unsqueeze(1), right_theta.unsqueeze(1), angle_input], 1
-                )
-            )
+            self._theta_approx(torch.cat([theta.unsqueeze(1), angle_input], 1))
             * torch.pi
         )
-        left_theta, right_theta = torch.chunk(theta, chunks=2, dim=1)
 
         # 4) Corner points for left, right
         top_left = left_xy
         bottom_left = left_xy + edge_len.unsqueeze(1) * torch.cat(
-            [torch.cos(left_theta), torch.sin(left_theta)], dim=1
+            [torch.cos(theta), torch.sin(theta)], dim=1
         )
         top_right = right_xy
         bottom_right = right_xy + edge_len.unsqueeze(1) * torch.cat(
-            [torch.cos(right_theta), torch.sin(right_theta)], dim=1
+            [torch.cos(theta), torch.sin(theta)], dim=1
         )
         corner_coords = torch.stack([top_left, bottom_left, top_right, bottom_right], 1)
         corner_coords = corner_coords / self._scale_factors.unsqueeze(1)
