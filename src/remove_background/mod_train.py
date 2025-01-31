@@ -12,6 +12,7 @@ from .mod_transforms import (
 )
 from ..utils.arg_parser import get_parser
 from .loss import ModComboLoss
+from .metrics import IOUMetric
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
@@ -36,13 +37,16 @@ def train(
     data_loader: dict[str, DataLoader],
     epochs: int,
     valid: bool = True,
+    metrics_fn: dict[str, nn.Module] = {},
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[8, 18])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10])
     model = model.to(args.device)
     path_to_save = os.path.join(args.checkpoint_dir, args.save_as)
 
     best_loss = float("inf")
+    iou_record = float("inf")
+    metrics = dict.fromkeys(metrics_fn.keys(), 0.0)
     for epoch in range(epochs):
         epoch_start = time.time()
         model.train()
@@ -65,14 +69,23 @@ def train(
             loss.backward()
             optimizer.step()
 
+            for metric_name, metric_fn in metrics_fn.items():
+                metrics[metric_name] += metric_fn(
+                    outputs=outputs["coords"].detach(),
+                    targets=targets["corner_coordinates"].detach(),
+                ).item()
+
         scheduler.step()
         avg_loss = running_loss / (ind + 1)
-        print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<11}: {avg_loss:.6f}")
+        print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<20}: {avg_loss:.6f}")
+
+        iou_metrics = metrics.get("iou", 0.0) / (ind + 1)
 
         if valid:
             model.eval()
             with torch.no_grad():
                 running_vloss = 0.0
+                vmetrics = dict.fromkeys(metrics_fn.keys(), 0.0)
                 for ind, data in enumerate(data_loader["valid"]):
                     inputs, targets, weights = [
                         move_to_device(data=x, device=args.device) for x in data
@@ -90,29 +103,36 @@ def train(
                         outputs=outputs, targets=targets, weights=weights
                     )
 
+                    for metric_name, metric_fn in metrics_fn.items():
+                        vmetrics[metric_name] += metric_fn(
+                            outputs=outputs["coords"],
+                            targets=targets["corner_coordinates"],
+                        ).item()
                     running_vloss += loss.item()
 
                 avg_vloss = running_vloss / (ind + 1)
                 combined_loss = avg_loss * 0.2 + avg_vloss * 0.8
 
-                output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.6f}\n"
-                output_avg_vloss += "\n"
+                iou_vmetrics = vmetrics.get("iou", 0.0) / (ind + 1)
+                combined_iou_metrics = iou_metrics * 0.2 + iou_vmetrics * 0.8
 
-                output_avg_vloss += f"\t{'Combined Loss':<11}: {combined_loss:.6f}\n"
-                output_avg_vloss += "\n"
+                output_valid_message = ""
+                output_valid_message += f"\t{'Valid Loss':<20}: {avg_vloss:.6f}\n"
+                output_valid_message += f"\t{'Valid IoU':<20}: {iou_vmetrics:.6f}\n"
+                output_valid_message += "\n"
 
-                if combined_loss < best_loss:
-                    best_loss = combined_loss
+                if combined_iou_metrics < iou_record:
+                    iou_record = combined_iou_metrics
                     if not args.no_save:
                         torch.save(model, path_to_save)
-                    output_avg_vloss += "\tNew Record, Saved!"
-                print(output_avg_vloss)
-                print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
+                    output_valid_message += "\tNew Record, Saved!"
+                print(output_valid_message)
+                print(f"\t{'Best IoU':<20}: {iou_record:.6f}")
 
         epoch_end = time.time()
         min_t = (epoch_end - epoch_start) // 60
         sec_t = int((epoch_end - epoch_start) % 60)
-        print(f"\t{'Epoch Time':<11}: {min_t} min(s) {sec_t} sec(s)\n")
+        print(f"\t{'Epoch Time':<20}: {min_t} min(s) {sec_t} sec(s)\n")
 
 
 if __name__ == "__main__":
@@ -144,6 +164,9 @@ if __name__ == "__main__":
     )
 
     loss_fn = ModComboLoss(number_of_classes=1, factor=0.3)
+    iou_metric = IOUMetric(
+        height=src_shape[0], width=src_shape[1], reduction="mean"
+    ).to(args.device)
 
     if args.resume:
         model = torch.load(
@@ -191,4 +214,5 @@ if __name__ == "__main__":
         data_loader=dataloader,
         epochs=args.epochs,
         valid=True,
+        metrics_fn={"iou": iou_metric},
     )
