@@ -45,12 +45,13 @@ def train(
     path_to_save = os.path.join(args.checkpoint_dir, args.save_as)
 
     best_loss = float("inf")
-    iou_record = float("inf")
-    metrics = dict.fromkeys(metrics_fn.keys(), 0.0)
+    iou_record = float("-inf")
     for epoch in range(epochs):
         epoch_start = time.time()
         model.train()
+
         running_loss = 0.0
+        metrics = dict.fromkeys(metrics_fn.keys(), 0.0)
         for ind, data in enumerate(data_loader["train"]):
             inputs, targets, weights = [
                 move_to_device(data=x, device=args.device) for x in data
@@ -82,10 +83,11 @@ def train(
         iou_metrics = metrics.get("iou", 0.0) / (ind + 1)
 
         if valid:
+            running_vloss = 0.0
+            vmetrics = dict.fromkeys(metrics_fn.keys(), 0.0)
+
             model.eval()
             with torch.no_grad():
-                running_vloss = 0.0
-                vmetrics = dict.fromkeys(metrics_fn.keys(), 0.0)
                 for ind, data in enumerate(data_loader["valid"]):
                     inputs, targets, weights = [
                         move_to_device(data=x, device=args.device) for x in data
@@ -110,24 +112,24 @@ def train(
                         ).item()
                     running_vloss += loss.item()
 
-                avg_vloss = running_vloss / (ind + 1)
-                combined_loss = avg_loss * 0.2 + avg_vloss * 0.8
+            avg_vloss = running_vloss / (ind + 1)
+            combined_loss = avg_loss * 0.2 + avg_vloss * 0.8
 
-                iou_vmetrics = vmetrics.get("iou", 0.0) / (ind + 1)
-                combined_iou_metrics = iou_metrics * 0.2 + iou_vmetrics * 0.8
+            iou_vmetrics = vmetrics.get("iou", 0.0) / (ind + 1)
+            combined_iou_metrics = iou_metrics * 0.2 + iou_vmetrics * 0.8
 
-                output_valid_message = ""
-                output_valid_message += f"\t{'Valid Loss':<20}: {avg_vloss:.6f}\n"
-                output_valid_message += f"\t{'Valid IoU':<20}: {iou_vmetrics:.6f}\n"
-                output_valid_message += "\n"
+            output_valid_message = ""
+            output_valid_message += f"\t{'Valid Loss':<20}: {avg_vloss:.6f}\n"
+            output_valid_message += f"\t{'Valid IoU':<20}: {iou_vmetrics:.6f}\n"
+            output_valid_message += "\n"
 
-                if combined_iou_metrics < iou_record:
-                    iou_record = combined_iou_metrics
-                    if not args.no_save:
-                        torch.save(model, path_to_save)
-                    output_valid_message += "\tNew Record, Saved!"
-                print(output_valid_message)
-                print(f"\t{'Best IoU':<20}: {iou_record:.6f}")
+            if combined_iou_metrics > iou_record:
+                iou_record = combined_iou_metrics
+                if not args.no_save:
+                    torch.save(model, path_to_save)
+                output_valid_message += "\tNew Record, Saved!"
+            print(output_valid_message)
+            print(f"\t{'Best IoU':<20}: {iou_record:.6f}")
 
         epoch_end = time.time()
         min_t = (epoch_end - epoch_start) // 60
