@@ -354,6 +354,91 @@ class ChannelScaleAttention(nn.Module):
         return reduced_features
 
 
+class BottleneckBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        inter_channels: int,
+        out_channels: int,
+        stride: int,
+        use_skip: bool = False,
+        *args,
+        **kwargs,
+    ):
+        super(BottleneckBlock, self).__init__(*args, **kwargs)
+
+        self._conv1 = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=inter_channels,
+            kernel_size=1,
+            stride=1,
+            bias=False,
+        )
+        self._bn1 = nn.BatchNorm2d(inter_channels)
+
+        self._conv2 = nn.Conv2d(
+            in_channels=inter_channels,
+            out_channels=inter_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        )
+        self._bn2 = nn.BatchNorm2d(inter_channels)
+
+        self._conv3 = nn.Conv2d(
+            in_channels=inter_channels,
+            out_channels=out_channels,
+            kernel_size=1,
+            stride=1,
+            bias=False,
+        )
+        self._bn3 = nn.BatchNorm2d(out_channels)
+
+        self._use_skip = use_skip
+        if self._use_skip:
+            if stride != 1 or in_channels != out_channels:
+                self._skip_conv = nn.Sequential(
+                    nn.Conv2d(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        kernel_size=1,
+                        stride=stride,
+                        bias=False,
+                    ),
+                    nn.BatchNorm2d(out_channels),
+                )
+            else:
+                self._skip_conv = None
+        else:
+            self._skip_conv = None
+
+        self._relu = nn.ReLU()
+
+    def forward(self, x):
+        identity = x
+
+        out = self._conv1(x)
+        out = self._bn1(out)
+        out = self._relu(out)
+
+        out = self._conv2(out)
+        out = self._bn2(out)
+        out = self._relu(out)
+
+        out = self._conv3(out)
+        out = self._bn3(out)
+
+        if self._use_skip:
+            if self._skip_conv is not None:
+                identity = self._skip_conv(x)
+            out = out + identity
+
+        out = self._relu(out)
+
+        return out
+
+
 class LineApproxBlock(nn.Module):
     """
     A block that approximates lines on the left and right edges of a scanned page.
@@ -368,8 +453,8 @@ class LineApproxBlock(nn.Module):
     def __init__(
         self,
         in_channels: int = 1,
-        conv_embed_channels: list[int] = (32, 64, 128, 256),
-        reg_embed_channels: list[int] = (256, 128, 64),
+        conv_embed_channels: list[int] = [32, 64, 128, 256],
+        reg_embed_channels: list[int] = [256, 128, 64, 32, 8],
         src_shape: tuple[int, int] = (640, 640),
         *args,
         **kwargs,
@@ -377,28 +462,38 @@ class LineApproxBlock(nn.Module):
         super().__init__(*args, **kwargs)
 
         # 1) Convolutional feature extractor
-        self._conv = nn.Sequential(
-            DoubleConvBlock(
-                in_channels=in_channels,
-                inter_channels=conv_embed_channels[0],
-                out_channels=conv_embed_channels[1],
-                kernel_size=3,
-                padding=1,
-                stride=2,
-                bias=False,
-                activation_fn=nn.LeakyReLU(),
-            ),
-            DoubleConvBlock(
-                in_channels=conv_embed_channels[1],
-                inter_channels=conv_embed_channels[2],
-                out_channels=conv_embed_channels[3],
-                kernel_size=3,
-                padding=1,
-                stride=2,
-                bias=False,
-                activation_fn=nn.LeakyReLU(),
-            ),
-        )
+        # self._conv = nn.Sequential(
+        #     DoubleConvBlock(
+        #         in_channels=in_channels,
+        #         inter_channels=conv_embed_channels[0],
+        #         out_channels=conv_embed_channels[1],
+        #         kernel_size=3,
+        #         padding=1,
+        #         stride=2,
+        #         bias=False,
+        #         activation_fn=nn.LeakyReLU(),
+        #     ),
+        #     DoubleConvBlock(
+        #         in_channels=conv_embed_channels[1],
+        #         inter_channels=conv_embed_channels[2],
+        #         out_channels=conv_embed_channels[3],
+        #         kernel_size=3,
+        #         padding=1,
+        #         stride=2,
+        #         bias=False,
+        #         activation_fn=nn.LeakyReLU(),
+        #     ),
+        # )
+        conv_embed_channels = [in_channels] + conv_embed_channels
+        conv_list = []
+        for prev_chn, chn in zip(conv_embed_channels[:-1], conv_embed_channels[1:]):
+            conv_list.append(
+                BottleneckBlock(
+                    in_channels=prev_chn, inter_channels=chn, out_channels=chn, stride=2
+                )
+            )
+        self._conv = nn.Sequential(*conv_list)
+
         # 2) Global average pool to reduce spatial dimension
         self._gap = nn.AdaptiveAvgPool2d(1)
 
@@ -408,15 +503,15 @@ class LineApproxBlock(nn.Module):
         for prev_chn, chn in zip(reg_embed_channels[:-1], reg_embed_channels[1:]):
             self._regression_head.append(
                 nn.Sequential(
-                    nn.Linear(prev_chn, chn, bias=True), nn.LeakyReLU(), nn.Dropout(0.5)
+                    nn.Linear(prev_chn, chn, bias=True), nn.LeakyReLU(), nn.Dropout(0.3)
                 )
             )
 
         # 4) Final line-approx layer: outputs 6 parameters (3 for left edge, 3 for right edge)
-        self._lines_approx = nn.Sequential(
-            nn.Linear(reg_embed_channels[-1], 5), nn.Sigmoid()  # +1 for edge_theta
-        )
-        self._theta_approx = nn.Sequential(nn.Linear(1 + 1, 1), nn.Sigmoid())
+        # self._lines_approx = nn.Sequential(
+        #     nn.Linear(reg_embed_channels[-1], 5), nn.Sigmoid()  # +1 for edge_theta
+        # )
+        self._lines_approx = nn.Linear(reg_embed_channels[-1], 5)
 
         # Register buffers for constant geometry references
         w, h = src_shape
@@ -452,24 +547,28 @@ class LineApproxBlock(nn.Module):
             x = layer(x)
 
         # 3) Lines approximation
-        #   - We also feed in the normalized angle (edge_theta / 180).
+        #   - We also feed in the normalized angle (edge_theta / 180) and turn it into to offset.
         angle_input = edge_theta.unsqueeze(1)
+        # coords = self._lines_approx(torch.cat([x, angle_input - 0.5], 1))
         coords = self._lines_approx(x)
 
-        # coords -> 6 params: left( x, y, theta ) + right( x, y, theta )
-        left_side, right_side = torch.chunk(coords[..., :-1], chunks=2, dim=1)
+        # coords -> 5 params: left( x, y ) + right( x, y ) + theta
+        # note that theta is shared by both left and right
+        left_side, right_side = torch.chunk(coords[..., :-1].sigmoid(), chunks=2, dim=1)
 
         # Scale xy by image size
         left_xy = left_side[:, :2] * self._scale_factors
         right_xy = right_side[:, :2] * self._scale_factors
 
-        # Convert angles from [0..pi]
-        theta = 1 - coords[..., -1]
+        # Convert to theta offset and corresponding radius
+        theta_offset = coords[..., -1].tanh() / 5
+        theta = (0.5 + theta_offset) * torch.pi
+        theta = theta.unsqueeze(1)
 
-        theta = (
-            self._theta_approx(torch.cat([theta.unsqueeze(1), angle_input], 1))
-            * torch.pi
-        )
+        # theta = (
+        #     self._theta_approx(torch.cat([theta.unsqueeze(1), angle_input], 1))
+        #     * torch.pi
+        # )
 
         # 4) Corner points for left, right
         top_left = left_xy
