@@ -648,23 +648,32 @@ def build_valid_transform():
     return tr_fn
 
 
-def build_scanned_transform():
-    tr_fn = v2.Compose(
-        [
-            Rotate(),
-            RandomHorizontalFlip(not_flip_prob=0.6),
-            RandomVerticalFlip(not_flip_prob=0.9),
-            RandomResizedCrop(
-                size=(640, 640),
-                scale=(0.25, 1.0),
-                not_crop_prob=0.1,
-                crop_margin_prob=0.3,
-                crop_bookmark_prob=0.3,
-                bookmark_label=1,
-            ),
-            MaskToBinary(foreground_label=2),
-            ArrayToTensor(),
-        ]
-    )
+def build_scanned_transform(split="train", reshape_size: int = 1024):
+    if split.lower() == "train":
+        tr_fn = v2.Compose(
+            [
+                Rotate(),
+                RandomHorizontalFlip(not_flip_prob=0.6),
+                RandomVerticalFlip(not_flip_prob=0.9),
+                RandomResizedCrop(
+                    size=(reshape_size, reshape_size),
+                    scale=(0.25, 1.0),
+                    not_crop_prob=0.1,
+                    crop_margin_prob=0.3,
+                    crop_bookmark_prob=0.3,
+                    bookmark_label=1,
+                ),
+                MaskToBinary(foreground_label=2),
+                ArrayToTensor(),
+            ]
+        )
+    else:
+        tr_fn = v2.Compose(
+            [
+                Resize(size=(reshape_size, reshape_size)),
+                MaskToBinary(foreground_label=2),
+                ArrayToTensor(),
+            ]
+        )
 
     return tr_fn

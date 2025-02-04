@@ -67,42 +67,41 @@ def train(
             "recall": 0.0,
         }
 
-        if valid:
-            model.eval()
-            with torch.no_grad():
-                running_vloss = 0.0
-                for ind, data in enumerate(data_loader["valid"]):
-                    src, tgt, weights = data
-                    src = src.to(args.device)
-                    tgt = tgt.to(args.device)
-                    weights = weights.to(args.device)
+        model.eval()
+        with torch.no_grad():
+            running_vloss = 0.0
+            for ind, data in enumerate(data_loader["valid"]):
+                src, tgt, weights = data
+                src = src.to(args.device)
+                tgt = tgt.to(args.device)
+                weights = weights.to(args.device)
 
-                    logits = model(src)
-                    loss = loss_fn(logits, tgt, weights)
-                    # new_metrics: dict[str, torch.Tensor] = BinaryMetrics()(
-                    #     y_pred=logits, y_true=tgt
-                    # )
+                logits = model(src)
+                loss = loss_fn(logits, tgt, weights)
+                # new_metrics: dict[str, torch.Tensor] = BinaryMetrics()(
+                #     y_pred=logits, y_true=tgt
+                # )
 
-                    # for key in new_metrics.keys():
-                    #     metrics[key] += new_metrics[key].item()
+                # for key in new_metrics.keys():
+                #     metrics[key] += new_metrics[key].item()
 
-                    running_vloss += loss.item()
+                running_vloss += loss.item()
 
-                avg_vloss = running_vloss / (ind + 1)
-                # for key in metrics.keys():
-                #     metrics[key] /= ind + 1
+            avg_vloss = running_vloss / (ind + 1)
+            # for key in metrics.keys():
+            #     metrics[key] /= ind + 1
 
-                output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.6f}\n"
-                # for key in metrics.keys():
-                #     output_avg_vloss += f"\t{key:<11}: {metrics[key]:.6f}\n"
-                output_avg_vloss += "\n"
+            output_avg_vloss = f"\t{'Valid Loss':<11}: {avg_vloss:.6f}\n"
+            # for key in metrics.keys():
+            #     output_avg_vloss += f"\t{key:<11}: {metrics[key]:.6f}\n"
+            output_avg_vloss += "\n"
 
-                if avg_vloss < best_loss:
-                    best_loss = avg_vloss
-                    torch.save(model, path_to_save)
-                    output_avg_vloss += "\tNew Record, Saved!"
-                print(output_avg_vloss)
-                print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
+            if avg_vloss < best_loss:
+                best_loss = avg_vloss
+                torch.save(model, path_to_save)
+                output_avg_vloss += "\tNew Record, Saved!"
+            print(output_avg_vloss)
+            print(f"\t{'Best Loss':<11}: {best_loss:.6f}")
 
         epoch_end = time.time()
         min_t = (epoch_end - epoch_start) // 60
@@ -148,11 +147,13 @@ if __name__ == "__main__":
     # )
     train_dataset = MagazineCropDataset(
         split="train",
-        transforms=build_scanned_transform(),
+        transforms=build_scanned_transform(split="train"),
         augment_factor=args.augment_factor,
     )
     valid_dataset = MagazineCropDataset(
-        split="valid", transforms=build_valid_transform(), augment_factor=2
+        split="valid",
+        transforms=build_scanned_transform(split="valid"),
+        augment_factor=2,
     )
     dataloader = {
         "train": DataLoader(
