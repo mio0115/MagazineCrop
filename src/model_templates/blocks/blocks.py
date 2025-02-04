@@ -493,9 +493,9 @@ class LineApproxBlock(nn.Module):
     def __init__(
         self,
         in_channels: int = 1,
-        stage_channels: list[int] = [32, 64, 128],
-        blocks_per_stage: list[int] = [2, 2, 2],
-        reg_embed_channels: list[int] = [128, 64, 32, 8],
+        stage_channels: list[int] = [32, 64, 128, 256],
+        blocks_per_stage: list[int] = [2, 2, 2, 2],
+        reg_embed_channels: list[int] = [256, 256, 128, 128, 64, 32, 8],
         src_shape: tuple[int, int] = (640, 640),
         *args,
         **kwargs,
@@ -504,10 +504,13 @@ class LineApproxBlock(nn.Module):
 
         # 1) Convolutional feature extractor
         in_ch = in_channels
+        num_downsample = 3
         conv_list = []
-        for blks, out_ch in zip(blocks_per_stage, stage_channels):
+        for stage_idx, (blks, out_ch) in enumerate(
+            zip(blocks_per_stage, stage_channels)
+        ):
             for blk_idx in range(blks):
-                stride = 2 if (blk_idx == 0) else 1
+                stride = 2 if (blk_idx == 0) and stage_idx < num_downsample else 1
 
                 block = BottleneckBlock(
                     in_channels=in_ch,
