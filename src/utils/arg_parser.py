@@ -160,7 +160,7 @@ def dev_parser():
     )
     training_group.add_argument(
         "-accum-steps",
-        "--accumulation_steps",
+        "--accumulation-steps",
         type=int,
         default=1,
         dest="accumulation_steps",
