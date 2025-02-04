@@ -1,9 +1,11 @@
 import os
 import time
+from math import ceil
 
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
 
 from .model.mod_unet_pp import build_model
 from .datasets import ModMagazineCropDataset, mod_mc_collate_fn
@@ -29,6 +31,17 @@ def move_to_device(
         raise ValueError("Data should be either a dict or a tensor")
 
 
+def poly_lr(
+    epoch,
+    base_lr: float = 1e-3,
+    min_lr: float = 5e-5,
+    max_epochs: int = 20,
+    power: float = 0.9,
+):
+    factor = (1 - epoch / max_epochs) ** power
+    return max(min_lr / base_lr, factor)
+
+
 def train(
     args,
     model: nn.Module,
@@ -36,11 +49,19 @@ def train(
     loss_fn: nn.Module,
     data_loader: dict[str, DataLoader],
     epochs: int,
+    accumulation_steps: int = 8,
     valid: bool = True,
     metrics_fn: dict[str, nn.Module] = {},
 ):
     print("Training model...")
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10])
+
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=[5e-4, 5e-4, 5e-3],
+        total_steps=ceil(len(data_loader["train"]) / accumulation_steps) * epochs,
+        pct_start=0.2,
+    )
+
     model = model.to(args.device)
     path_to_save = os.path.join(args.checkpoint_dir, args.save_as)
 
@@ -50,14 +71,14 @@ def train(
         epoch_start = time.time()
         model.train()
 
+        optimizer.zero_grad()
         running_loss = 0.0
         metrics = dict.fromkeys(metrics_fn.keys(), 0.0)
-        for ind, data in enumerate(data_loader["train"]):
+        for ind, data in enumerate(data_loader["train"], start=1):
             inputs, targets, weights = [
                 move_to_device(data=x, device=args.device) for x in data
             ]
 
-            optimizer.zero_grad()
             # outputs = {'logits': logits, 'coords': coords}
             outputs = model(
                 src=inputs["images"],
@@ -67,8 +88,14 @@ def train(
 
             loss, *_ = loss_fn(outputs=outputs, targets=targets, weights=weights)
             running_loss += loss.item()
+
+            loss = loss / accumulation_steps
             loss.backward()
-            optimizer.step()
+
+            if ind % accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+                scheduler.step()
 
             for metric_name, metric_fn in metrics_fn.items():
                 metrics[metric_name] += metric_fn(
@@ -76,11 +103,16 @@ def train(
                     targets=targets["corner_coordinates"].detach(),
                 ).item()
 
-        scheduler.step()
-        avg_loss = running_loss / (ind + 1)
+        remainder = ind % accumulation_steps
+        if remainder > 0:
+            optimizer.step()
+            optimizer.zero_grad()
+            scheduler.step()
+
+        avg_loss = running_loss / ind
         print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<20}: {avg_loss:.6f}")
 
-        iou_metrics = metrics.get("iou", 0.0) / (ind + 1)
+        iou_metrics = metrics.get("iou", 0.0) / ind
 
         if valid:
             running_vloss = 0.0
@@ -88,12 +120,11 @@ def train(
 
             model.eval()
             with torch.no_grad():
-                for ind, data in enumerate(data_loader["valid"]):
+                for ind, data in enumerate(data_loader["valid"], start=1):
                     inputs, targets, weights = [
                         move_to_device(data=x, device=args.device) for x in data
                     ]
 
-                    optimizer.zero_grad()
                     # outputs = {'logits': logits, 'coords': coords}
                     outputs = model(
                         src=inputs["images"],
@@ -112,10 +143,10 @@ def train(
                         ).item()
                     running_vloss += loss.item()
 
-            avg_vloss = running_vloss / (ind + 1)
+            avg_vloss = running_vloss / ind
             combined_loss = avg_loss * 0.2 + avg_vloss * 0.8
 
-            iou_vmetrics = vmetrics.get("iou", 0.0) / (ind + 1)
+            iou_vmetrics = vmetrics.get("iou", 0.0) / ind
             combined_iou_metrics = iou_metrics * 0.2 + iou_vmetrics * 0.8
 
             output_valid_message = ""
@@ -198,6 +229,7 @@ if __name__ == "__main__":
             shuffle=True,
             num_workers=args.dataloader_workers,
             collate_fn=mod_mc_collate_fn,
+            drop_last=True,
         ),
         "valid": DataLoader(
             valid_dataset,
@@ -215,6 +247,7 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         data_loader=dataloader,
         epochs=args.epochs,
+        accumulation_steps=args.accumulation_steps,
         valid=True,
         metrics_fn={"iou": iou_metric},
     )

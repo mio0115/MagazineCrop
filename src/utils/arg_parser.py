@@ -158,6 +158,14 @@ def dev_parser():
         dest="no_save",
         help="do not save model after training",
     )
+    training_group.add_argument(
+        "-accum-steps",
+        "--accumulation_steps",
+        type=int,
+        default=1,
+        dest="accumulation_steps",
+        help="number of steps of gradient accumulation",
+    )
 
     # arguments for inference
     inference_group = parser.add_argument_group("Inference arguments")

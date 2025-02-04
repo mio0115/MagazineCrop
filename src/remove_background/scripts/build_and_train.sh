@@ -20,6 +20,7 @@ CKPT_DIR="./checkpoints"
 MODULE_NAME="train"
 DATALOADER_WORKERS=3
 EDGE_SIZE=640
+ACCUM_STEPS=1
 TRAIN=""
 RESUME=""
 NO_SAVE=""
@@ -47,6 +48,8 @@ while [[ "$#" -gt 0 ]]; do
         --module-name) MODULE_NAME="$2"; shift;;
         --edge-size) EDGE_SIZE="$2"; shift;;
         --no-save) NO_SAVE="--no-save" ;;
+        -accum-steps) ACCUM_STEPS="$2"; shift;;
+        --accumulation-steps) ACCUM_STEPS="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -82,6 +85,7 @@ docker run --rm -it \
             --dataloader-workers=${DATALOADER_WORKERS} \
             --checkpoint-dir=${CKPT_DIR} \
             --edge-size=${EDGE_SIZE} \
+            --accumulation-steps=${ACCUM_STEPS} \
             ${TRAIN} \
             ${RESUME} \
             ${NO_SAVE} \

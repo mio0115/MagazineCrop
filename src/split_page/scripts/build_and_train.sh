@@ -18,9 +18,12 @@ CLS_NUM=20
 RESUME_FROM="sp_pg_model.pth"
 SHARED_MEM_SIZE="200g"
 DATALOADER_WORKERS=3
+ACCUM_STEPS=1
+MODULE_NAME="train"
 CKPT_DIR="./checkpoints"
 TRAIN=""
 RESUME=""
+NO_SAVE=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -42,6 +45,10 @@ while [[ "$#" -gt 0 ]]; do
         --dataloader-workers) DATALOADER_WORKERS="$2"; shift;;
         -ckpt-dir) CKPT_DIR="$2"; shift;;
         --checkpoint-dir) CKPT_DIR="$2"; shift;;
+        -accum-steps) ACCUM_STEPS="$2"; shift;;
+        --accumulation-steps) ACCUM_STEPS="$2"; shift;;
+        --no-save) NO_SAVE="--no-save"; shift;;
+        --module-name) MODULE_NAME="$2"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -65,7 +72,7 @@ docker run --rm -it \
         --gpus all \
         --shm-size=${SHARED_MEM_SIZE} \
         ${IMAGE_NAME}:${IMAGE_TAG} \
-        python -m src.split_page.train \
+        python -m src.split_page.${MODULE_NAME} \
             --learning-rate=${LEARNING_RATE} \
             --lr-backbone=${LEARNING_RATE_BACKBONE} \
             --augment-factor=${AUGMENT_FACTOR} \
@@ -76,8 +83,10 @@ docker run --rm -it \
             --resume-from=${RESUME_FROM} \
             --dataloader-workers=${DATALOADER_WORKERS} \
             --checkpoint-dir=${CKPT_DIR} \
+            --accumulation-steps=${ACCUM_STEPS} \
             ${TRAIN} \
             ${RESUME} \
+            ${NO_SAVE} \
 
 if [ $? -ne 0 ]; then
     echo "Docker run failed. Exiting."
