@@ -242,9 +242,7 @@ class ModMagazineCropDataset(Dataset):
         ) as fp_annotations:
             self._annotations = json.load(fp_annotations)
         with open(
-            os.path.join(
-                self._path_to_root, "annotations", f"edge_annotations_{edge_size}.json"
-            ),
+            os.path.join(self._path_to_root, "annotations", f"edge_annotations.json"),
             "r",
         ) as fp_annotations:
             self._edge_annotations = json.load(fp_annotations)

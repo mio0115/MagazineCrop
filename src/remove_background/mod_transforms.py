@@ -173,7 +173,7 @@ class RandomShift:
         # If entire mask is background, clamp to full image.
         if top >= bottom or left >= right:
             return (0, height - 1, 0, width - 1)
-        return (top, bottom, left, right)
+        return (top, height - 1 - bottom, left, width - 1 - right)
 
     def _shift_up(self, img, tgt, weights, edges, shift):
         """
@@ -295,11 +295,7 @@ class RandomShift:
         there is background border. Probability of shift is (1 - not_shift_prob).
         """
         h, w = img.shape[:2]
-        top, bottom, left, right = self._foreground_bbox(tgt)
-        top_space = top
-        bottom_space = (h - 1) - bottom
-        left_space = left
-        right_space = (w - 1) - right
+        top_space, bottom_space, left_space, right_space = self._foreground_bbox(tgt)
 
         # If the entire mask is foreground, or no background border around it,
         # or random says do not shift => skip shifting
@@ -537,6 +533,11 @@ class Resize(object):
             gt_size = (self._size[0] - (left + right), self._size[1] - (top + bottom))
             edges[:, 0] = edges[:, 0] * gt_size[0] / img.shape[1] + left
             edges[:, 1] = edges[:, 1] * gt_size[1] / img.shape[0] + top
+            # Also compute corresponding edge_len based on edge_theta
+            edge_len = edge_len * np.sqrt(
+                (np.cos(edge_theta) * self._size[0] / img.shape[1]) ** 2
+                + (np.sin(edge_theta) * self._size[1] / img.shape[0]) ** 2
+            )
         else:
             resized_img = img
         if self._resize_tgt:
@@ -662,6 +663,149 @@ class MaskToBinary(object):
         return img, tgt, weights, edge_len, edge_theta, edges
 
 
+class RandomScale(object):
+    def __init__(self, scale_range=(1.2, 2.0), background_label=0):
+        """
+        Args:
+            scale_range (tuple): (min_scale, max_scale), determines how much the object is enlarged.
+            background_label (int): The label value representing the background in segmentation masks.
+        """
+        self._scale_range = scale_range
+        self._background_label = background_label
+
+    def _foreground_bbox(self, tgt: np.ndarray) -> tuple[int, int, int, int]:
+        """Find the bounding box of the foreground object."""
+        height, width = tgt.shape[:2]
+
+        top = 0
+        while top < height and tgt[top, :].max() == self._background_label:
+            top += 1
+
+        bottom = height - 1
+        while bottom >= 0 and tgt[bottom, :].max() == self._background_label:
+            bottom -= 1
+
+        left = 0
+        while left < width and tgt[:, left].max() == self._background_label:
+            left += 1
+
+        right = width - 1
+        while right >= 0 and tgt[:, right].max() == self._background_label:
+            right -= 1
+
+        if top >= bottom or left >= right:
+            return (0, height - 1, 0, width - 1)
+        return (top, bottom, left, right)
+
+    def __call__(
+        self,
+        img: np.ndarray,
+        tgt: np.ndarray,
+        weights: np.ndarray,
+        edge_len: float,
+        edge_theta: float,
+        edges: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
+        """
+        Args:
+            img (np.ndarray): Image array of shape (H, W, C) or (H, W).
+            tgt (np.ndarray): Target mask with integer labels, shape (H, W).
+            weights (np.ndarray): Weights array, shape (H, W).
+            edge_len (float): The length of the edge of the image.
+            edge_theta (float): The angle of the edge of the image.
+            edges (np.ndarray): The edge points of the image.
+
+        Returns:
+            (img, binary_tgt, weights, edge_len, edge_theta, edges)
+        """
+        height, width, _ = img.shape
+
+        # Get foreground bounding box
+        top, bottom, left, right = self._foreground_bbox(tgt)
+
+        # Compute current bounding box size
+        fg_height, fg_width = bottom - top, right - left
+        fg_center_x, fg_center_y = (
+            (left + right) / 2,
+            (top + bottom) / 2,
+        )
+
+        # Compute new bounding box size
+        top_space, bottom_space = top, height - bottom
+        left_space, right_space = left, width - right
+
+        # Ensure new bounding box stays within image boundaries
+        new_top_space = top_space / np.random.uniform(*self._scale_range)
+        new_bottom_space = bottom_space / np.random.uniform(*self._scale_range)
+        new_left_space = left_space / np.random.uniform(*self._scale_range)
+        new_right_space = right_space / np.random.uniform(*self._scale_range)
+
+        new_top = int(fg_center_y - fg_height / 2 - new_top_space)
+        new_bottom = int(fg_center_y + fg_height / 2 + new_bottom_space)
+        new_left = int(fg_center_x - fg_width / 2 - new_left_space)
+        new_right = int(fg_center_x + fg_width / 2 + new_right_space)
+        new_height, new_width = new_bottom - new_top, new_right - new_left
+
+        # Crop and resize back to original size
+        cropped_img = img[new_top:new_bottom, new_left:new_right, :]
+        cropped_tgt = tgt[new_top:new_bottom, new_left:new_right]
+        cropped_weights = weights[new_top:new_bottom, new_left:new_right]
+
+        edge_len = edge_len * np.sqrt(
+            (np.cos(edge_theta) * new_width / width) ** 2
+            + (np.sin(edge_theta) * new_height / height) ** 2
+        )
+
+        edges[:, 0] = edges[:, 0] - new_left
+        edges[:, 1] = edges[:, 1] - new_top
+
+        # cv2.namedWindow("cropped img", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("cropped img", 1024, 1024)
+
+        # tmp_img = cropped_img.copy()
+        # print(np.reshape(edges, shape=(2, 2, 2)).shape)
+        # for edge in np.reshape(edges, shape=(2, 2, 2)):
+        #     tmp_edge = edge.astype(np.int32)
+        #     cv2.line(tmp_img, tmp_edge[0], tmp_edge[1], (0, 255, 0), 2)
+        # cv2.imshow("cropped img", tmp_img)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+
+        return cropped_img, cropped_tgt, cropped_weights, edge_len, edge_theta, edges
+
+
+class RandomChoice(object):
+    def __init__(
+        self,
+        not_choose_prob,
+        choices: list[object],
+        probs: list[object],
+        *args,
+        **kwargs,
+    ):
+        super(RandomChoice, self).__init__(*args, **kwargs)
+
+        self._not_choose_prob = not_choose_prob
+        self._probs = probs
+        self._choices = choices
+
+    def __call__(
+        self,
+        img: np.ndarray,
+        tgt: np.ndarray,
+        weights: np.ndarray,
+        edge_len: float,
+        edge_theta: float,
+        edges: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
+        if np.random.rand() < self._not_choose_prob:
+            return img, tgt, weights, edge_len, edge_theta, edges
+
+        choice = np.random.choice(self._choices, p=self._probs)
+
+        return choice(img, tgt, weights, edge_len, edge_theta, edges)
+
+
 def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024)):
     if split.lower() == "train":
         tr_fn = v2.Compose(
@@ -669,7 +813,14 @@ def build_scanned_transform(split="train", size: tuple[int, int] = (1024, 1024))
                 Rotate(random_angle_range=(-5, 5)),
                 RandomHorizontalFlip(not_flip_prob=0.5),
                 RandomVerticalFlip(not_flip_prob=0.9),
-                RandomShift(not_shift_prob=0.25, background_label=0),
+                RandomChoice(
+                    not_choose_prob=0.2,
+                    choices=[
+                        RandomShift(not_shift_prob=0.1, background_label=0),
+                        RandomScale(background_label=0, scale_range=(1.5, 20)),
+                    ],
+                    probs=[0.5, 0.5],
+                ),
                 Resize(size=size),
                 MaskToBinary(foreground_label=2),
                 ArrayToTensor(normalize=True, size=size),
