@@ -21,6 +21,8 @@ class ContractBlock(nn.Module):
                     out_channels=out_channels,
                     bias=False,
                     activation_fn=nn.ReLU(),
+                    normalization="batch",
+                    # normalization="group",
                 )
             )
 
@@ -95,6 +97,7 @@ class ConvBlock(nn.Module):
         stride: int | tuple[int] = 1,
         bias: bool = True,
         activation_fn: nn.Module = None,
+        normalization: str = "batch",
     ):
         super(ConvBlock, self).__init__()
         self._conv = nn.Conv2d(
@@ -105,7 +108,13 @@ class ConvBlock(nn.Module):
             stride=stride,
             bias=bias,
         )
-        self._bn = nn.BatchNorm2d(out_channels)
+        if normalization == "batch":
+            self._bn = nn.BatchNorm2d(out_channels)
+        elif normalization == "group":
+            self._bn = nn.GroupNorm(
+                num_groups=32 if out_channels >= 32 else out_channels,
+                num_channels=out_channels,
+            )
         self._activation_fn = activation_fn
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
@@ -128,6 +137,7 @@ class DoubleConvBlock(nn.Module):
         stride: int | tuple[int] = 1,
         bias: bool | list[bool] = True,
         activation_fn: Optional[nn.Module | list[nn.Module]] = None,
+        normalization: str = "batch",
         *args,
         **kwargs,
     ):
@@ -154,6 +164,7 @@ class DoubleConvBlock(nn.Module):
                 stride=stride[0],
                 bias=bias[0],
                 activation_fn=activation_fn[0],
+                normalization=normalization,
             ),
             ConvBlock(
                 in_channels=inter_channels,
@@ -163,6 +174,7 @@ class DoubleConvBlock(nn.Module):
                 stride=stride[1],
                 bias=bias[1],
                 activation_fn=activation_fn[1],
+                normalization=normalization,
             ),
         )
 
@@ -362,6 +374,7 @@ class BottleneckBlock(nn.Module):
         out_channels: int,
         stride: int,
         use_skip: bool = False,
+        normalization: str = "batch",
         *args,
         **kwargs,
     ):
@@ -374,7 +387,13 @@ class BottleneckBlock(nn.Module):
             stride=1,
             bias=False,
         )
-        self._bn1 = nn.BatchNorm2d(inter_channels)
+        if normalization == "batch":
+            self._norm1 = nn.BatchNorm2d(inter_channels)
+        elif normalization == "group":
+            self._norm1 = nn.GroupNorm(
+                num_groups=32 if inter_channels >= 32 else inter_channels,
+                num_channels=inter_channels,
+            )
 
         self._conv2 = nn.Conv2d(
             in_channels=inter_channels,
@@ -384,7 +403,13 @@ class BottleneckBlock(nn.Module):
             padding=1,
             bias=False,
         )
-        self._bn2 = nn.BatchNorm2d(inter_channels)
+        if normalization == "batch":
+            self._norm2 = nn.BatchNorm2d(inter_channels)
+        elif normalization == "group":
+            self._norm2 = nn.GroupNorm(
+                num_groups=32 if inter_channels >= 32 else inter_channels,
+                num_channels=inter_channels,
+            )
 
         self._conv3 = nn.Conv2d(
             in_channels=inter_channels,
@@ -393,21 +418,36 @@ class BottleneckBlock(nn.Module):
             stride=1,
             bias=False,
         )
-        self._bn3 = nn.BatchNorm2d(out_channels)
+        if normalization == "batch":
+            self._norm3 = nn.BatchNorm2d(out_channels)
+        elif normalization == "group":
+            self._norm3 = nn.GroupNorm(
+                num_groups=32 if out_channels >= 32 else out_channels,
+                num_channels=out_channels,
+            )
 
         self._use_skip = use_skip
         if self._use_skip:
             if stride != 1 or in_channels != out_channels:
-                self._skip_conv = nn.Sequential(
+                conv_blk = [
                     nn.Conv2d(
                         in_channels=in_channels,
                         out_channels=out_channels,
                         kernel_size=1,
                         stride=stride,
                         bias=False,
-                    ),
-                    nn.BatchNorm2d(out_channels),
-                )
+                    )
+                ]
+                if normalization == "batch":
+                    conv_blk.append(nn.BatchNorm2d(out_channels))
+                elif normalization == "group":
+                    conv_blk.append(
+                        nn.GroupNorm(
+                            num_groups=32 if out_channels >= 32 else out_channels,
+                            num_channels=out_channels,
+                        )
+                    )
+                self._skip_conv = nn.Sequential(*conv_blk)
             else:
                 self._skip_conv = None
         else:
@@ -419,15 +459,15 @@ class BottleneckBlock(nn.Module):
         identity = x
 
         out = self._conv1(x)
-        out = self._bn1(out)
+        out = self._norm1(out)
         out = self._relu(out)
 
         out = self._conv2(out)
-        out = self._bn2(out)
+        out = self._norm2(out)
         out = self._relu(out)
 
         out = self._conv3(out)
-        out = self._bn3(out)
+        out = self._norm3(out)
 
         if self._use_skip:
             if self._skip_conv is not None:
@@ -453,8 +493,9 @@ class LineApproxBlock(nn.Module):
     def __init__(
         self,
         in_channels: int = 1,
-        conv_embed_channels: list[int] = [32, 64, 128, 256],
-        reg_embed_channels: list[int] = [256, 128, 64, 32, 8],
+        stage_channels: list[int] = [32, 64, 128],
+        blocks_per_stage: list[int] = [2, 2, 2],
+        reg_embed_channels: list[int] = [128, 64, 32, 8],
         src_shape: tuple[int, int] = (640, 640),
         *args,
         **kwargs,
@@ -462,43 +503,30 @@ class LineApproxBlock(nn.Module):
         super().__init__(*args, **kwargs)
 
         # 1) Convolutional feature extractor
-        # self._conv = nn.Sequential(
-        #     DoubleConvBlock(
-        #         in_channels=in_channels,
-        #         inter_channels=conv_embed_channels[0],
-        #         out_channels=conv_embed_channels[1],
-        #         kernel_size=3,
-        #         padding=1,
-        #         stride=2,
-        #         bias=False,
-        #         activation_fn=nn.LeakyReLU(),
-        #     ),
-        #     DoubleConvBlock(
-        #         in_channels=conv_embed_channels[1],
-        #         inter_channels=conv_embed_channels[2],
-        #         out_channels=conv_embed_channels[3],
-        #         kernel_size=3,
-        #         padding=1,
-        #         stride=2,
-        #         bias=False,
-        #         activation_fn=nn.LeakyReLU(),
-        #     ),
-        # )
-        conv_embed_channels = [in_channels] + conv_embed_channels
+        in_ch = in_channels
         conv_list = []
-        for prev_chn, chn in zip(conv_embed_channels[:-1], conv_embed_channels[1:]):
-            conv_list.append(
-                BottleneckBlock(
-                    in_channels=prev_chn, inter_channels=chn, out_channels=chn, stride=2
+        for blks, out_ch in zip(blocks_per_stage, stage_channels):
+            for blk_idx in range(blks):
+                stride = 2 if (blk_idx == 0) else 1
+
+                block = BottleneckBlock(
+                    in_channels=in_ch,
+                    inter_channels=max(1, out_ch // 4),
+                    out_channels=out_ch,
+                    stride=stride,
+                    use_skip=True,
+                    normalization="group",
                 )
-            )
+                conv_list.append(block)
+                in_ch = out_ch
+
         self._conv = nn.Sequential(*conv_list)
 
         # 2) Global average pool to reduce spatial dimension
         self._gap = nn.AdaptiveAvgPool2d(1)
 
         # 3) Regression MLP
-        reg_embed_channels = [conv_embed_channels[-1]] + list(reg_embed_channels)
+        reg_embed_channels = [stage_channels[-1] + 1] + list(reg_embed_channels)
         self._regression_head = nn.ModuleList()
         for prev_chn, chn in zip(reg_embed_channels[:-1], reg_embed_channels[1:]):
             self._regression_head.append(
@@ -508,9 +536,6 @@ class LineApproxBlock(nn.Module):
             )
 
         # 4) Final line-approx layer: outputs 6 parameters (3 for left edge, 3 for right edge)
-        # self._lines_approx = nn.Sequential(
-        #     nn.Linear(reg_embed_channels[-1], 5), nn.Sigmoid()  # +1 for edge_theta
-        # )
         self._lines_approx = nn.Linear(reg_embed_channels[-1], 5)
 
         # Register buffers for constant geometry references
@@ -542,14 +567,14 @@ class LineApproxBlock(nn.Module):
         x = self._conv(src)
         x = self._gap(x).reshape(bs, -1)
 
+        angle_input = edge_theta.unsqueeze(1)
+        x = torch.cat([x, angle_input - 0.5], 1)
         # 2) Pass through regression MLP
         for layer in self._regression_head:
             x = layer(x)
 
         # 3) Lines approximation
         #   - We also feed in the normalized angle (edge_theta / 180) and turn it into to offset.
-        angle_input = edge_theta.unsqueeze(1)
-        # coords = self._lines_approx(torch.cat([x, angle_input - 0.5], 1))
         coords = self._lines_approx(x)
 
         # coords -> 5 params: left( x, y ) + right( x, y ) + theta
@@ -564,11 +589,6 @@ class LineApproxBlock(nn.Module):
         theta_offset = coords[..., -1].tanh() / 5
         theta = (0.5 + theta_offset) * torch.pi
         theta = theta.unsqueeze(1)
-
-        # theta = (
-        #     self._theta_approx(torch.cat([theta.unsqueeze(1), angle_input], 1))
-        #     * torch.pi
-        # )
 
         # 4) Corner points for left, right
         top_left = left_xy

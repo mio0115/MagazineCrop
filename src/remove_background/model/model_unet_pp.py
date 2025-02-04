@@ -47,6 +47,8 @@ class IterativeModel(nn.Module):
             out_channels=backbones[0].out_channels,
             bias=False,
             activation_fn=nn.ReLU(),
+            normalization="batch",
+            # normalization="group",
         )
 
         self._backbones = nn.ModuleList(backbones)
@@ -58,7 +60,14 @@ class IterativeModel(nn.Module):
             bias=False,
         )
         self._residual_blk = nn.Sequential(
-            nn.BatchNorm2d(backbones[0].out_channels), nn.ReLU()
+            nn.BatchNorm2d(num_features=backbones[0].out_channels)
+            # nn.GroupNorm(
+            #     num_channels=backbones[0].out_channels,
+            #     num_groups=(
+            #         32 if backbones[0].out_channels >= 32 else backbones[0].out_channels
+            #     ),
+            # ),
+            nn.ReLU(),
         )
 
     def forward(self, src):

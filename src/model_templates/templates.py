@@ -46,6 +46,8 @@ class UNetPlusPlus(nn.Module):
                             out_channels=curr_lvl_ch,
                             bias=False,
                             activation_fn=[nn.ReLU(), None],
+                            normalization="batch",
+                            # normalization="group",
                         ),
                     }
                 )
