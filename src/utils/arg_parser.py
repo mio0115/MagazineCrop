@@ -166,6 +166,13 @@ def dev_parser():
         dest="accumulation_steps",
         help="number of steps of gradient accumulation",
     )
+    training_group.add_argument(
+        "-mp",
+        "--mixed-precision",
+        action="store_true",
+        dest="mixed_precision",
+        help="train with mixed precision",
+    )
 
     # arguments for inference
     inference_group = parser.add_argument_group("Inference arguments")

@@ -24,6 +24,7 @@ ACCUM_STEPS=1
 TRAIN=""
 RESUME=""
 NO_SAVE=""
+MIXED_PRECISION=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -36,20 +37,21 @@ while [[ "$#" -gt 0 ]]; do
         --batch-size) BATCH_SIZE="$2"; shift ;;
         -bs) BATCH_SIZE="$2"; shift;;
         --shm) SHARED_MEM_SIZE="$2"; shift;;
-        --resume) RESUME="--resume" ;;
         --device) DEVICE="$2"; shift;;
         --save-as) SAVE_AS="$2"; shift;;
         --resume-from) RESUME_FROM="$2"; shift;;
-        --train) TRAIN="--train" ;;
-        --resume) RESUME="--resume" ;;
         --dataloader-workers) DATALOADER_WORKERS="$2"; shift;;
         -ckpt-dir) CKPT_DIR="$2"; shift;;
         --checkpoint-dir) CKPT_DIR="$2"; shift;;
         --module-name) MODULE_NAME="$2"; shift;;
         --edge-size) EDGE_SIZE="$2"; shift;;
-        --no-save) NO_SAVE="--no-save" ;;
         -accum-steps) ACCUM_STEPS="$2"; shift;;
         --accumulation-steps) ACCUM_STEPS="$2"; shift;;
+        --train) TRAIN="--train" ;;
+        --resume) RESUME="--resume" ;;
+        --no-save) NO_SAVE="--no-save" ;;
+        -mp) MIXED_PRECISION="--mixed-precision"; shift;;
+        --mixed-precision) MIXED_PRECISION="--mixed-precision"; shift;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift # Move to the next argument
@@ -89,6 +91,7 @@ docker run --rm -it \
             ${TRAIN} \
             ${RESUME} \
             ${NO_SAVE} \
+            ${MIXED_PRECISION} \
 
 if [ $? -ne 0 ]; then
     echo "Docker run failed. Exiting."
