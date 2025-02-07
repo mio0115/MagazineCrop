@@ -122,7 +122,11 @@ def dev_parser():
         help="path to save the model",
     )
     training_group.add_argument(
-        "--save-as", type=str, default="rm_bg_unetpp.pth", dest="save_as"
+        "--save-as",
+        type=str,
+        default="rm_bg_unetpp",
+        dest="save_as",
+        help="store the model in path/to/checkpoints/save_as/save_as.pth",
     )
     training_group.add_argument(
         "--augment-factor", type=int, default=5, dest="augment_factor"
@@ -141,8 +145,9 @@ def dev_parser():
     training_group.add_argument(
         "--resume-from",
         type=str,
-        default="rm_bg_unetpp_pretrained.pth",
+        default="rm_bg_unetpp_pretrained",
         dest="resume_from",
+        help="resume training from path/to/checkpoint/resume_from/resume_from.pth",
     )
     training_group.add_argument(
         "--edge-size",
