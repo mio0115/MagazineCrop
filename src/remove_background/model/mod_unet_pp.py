@@ -49,7 +49,9 @@ class Model(nn.Module):
             bias=False,
         )
 
-        self._line_approx_block = LineApproxBlock(in_channels=1, src_shape=src_shape)
+        self._line_approx_block = LineApproxBlock(
+            in_channels=1, src_shape=src_shape, blocks_per_stage=[3, 3, 3, 3]
+        )
 
     def forward(
         self, src: torch.Tensor, edge_length: torch.Tensor, edge_theta: torch.Tensor
