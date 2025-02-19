@@ -7,7 +7,143 @@ from .blocks.blocks import (
     ContractBlock,
     BalanceConvBlock,
     SpatialScaleAttention,
+    ConvBlock,
 )
+
+
+class UNet3Plus(nn.Module):
+    def __init__(self, in_channels: int = 1, out_channels: int = 1, *args, **kwargs):
+        super(UNet3Plus, self).__init__(*args, **kwargs)
+
+        if in_channels != 3:
+            self._warmup = nn.Conv2d(in_channels, 3, kernel_size=1)
+        else:
+            self._warmup = nn.Identity()
+        self._downsample, self._upsample = self._init_sampling_layers()
+        self.encoders, self.out_channels = self._init_encoders()
+        self.decoders = self._init_decoders(num_layers=4, channels=320)
+        self.to_logits = self._init_logits(out_channels)
+        self.connector_layers = self._init_connectors()
+
+    def _init_sampling_layers(self):
+        """Initializes downsample and upsample layers."""
+        scales = [1, 2, 4, 8, 16]
+        downsample = nn.ModuleDict(
+            {
+                f"{i}": (
+                    nn.MaxPool2d(kernel_size=s, stride=s) if i >= 1 else nn.Identity()
+                )
+                for i, s in enumerate(scales)
+            }
+        )
+        upsample = nn.ModuleDict(
+            {
+                f"{i}": (
+                    nn.Upsample(scale_factor=s, mode="bilinear")
+                    if i >= 1
+                    else nn.Identity()
+                )
+                for i, s in enumerate(scales)
+            }
+        )
+        return downsample, upsample
+
+    def _init_encoders(self):
+        """Initializes VGG16 backbone as the encoder."""
+        vgg16 = tv_models.vgg16(weights=tv_models.VGG16_Weights.DEFAULT).features
+        encoders = nn.ModuleList(
+            [vgg16[:4], vgg16[5:9], vgg16[10:16], vgg16[17:23], vgg16[24:30]]
+        )
+        return encoders, [64, 128, 256, 512, 512]
+
+    def _init_decoders(self, num_layers, channels):
+        """Creates decoder blocks which is aggregation layers followed by decoders."""
+        return nn.ModuleList(
+            [
+                DoubleConvBlock(
+                    in_channels=channels,
+                    inter_channels=channels,
+                    out_channels=channels,
+                    kernel_size=3,
+                    padding=1,
+                    bias=False,
+                    normalization="group",
+                    activation_fn=nn.ReLU(),
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+    def _init_logits(self, out_channels):
+        """Initializes final logits layers."""
+        logits = {
+            f"{i}": nn.Sequential(
+                self._upsample[f"{i-1}"],
+                nn.Conv2d(320, out_channels, kernel_size=3, padding=1),
+            )
+            for i in range(1, 5)
+        }
+        logits["5"] = nn.Sequential(
+            self._upsample["4"], nn.Conv2d(512, out_channels, kernel_size=3, padding=1)
+        )
+        return nn.ModuleDict(logits)
+
+    def _init_connectors(self):
+        """Creates connector layers for full-scale skip connections."""
+        connectors = {}
+        for tgt in range(1, 5):  # Decoder levels
+            for src in range(1, 6):  # Encoder levels (including final feature map)
+                key = f"d{tgt}e{src}" if src <= tgt or src == 5 else f"d{tgt}d{src}"
+                connectors[key] = self._create_connector(src, tgt)
+        return nn.ModuleDict(connectors)
+
+    def _create_connector(self, src, tgt):
+        """Creates a connector layer for encoder-decoder fusion."""
+        scale_layer = (
+            self._downsample[f"{abs(src - tgt)}"]
+            if src < tgt
+            else self._upsample[f"{abs(src - tgt)}"]
+        )
+        conv_layer = nn.Conv2d(
+            self.out_channels[src - 1] if src <= tgt or src == 5 else 320,
+            64,
+            kernel_size=3,
+            padding=1,
+        )
+        return nn.Sequential(scale_layer, conv_layer)
+
+    def forward(self, src: torch.Tensor):
+        """Forward pass through UNet3+."""
+        enc_outputs, dec_outputs = [], {}
+
+        x = self._warmup(src)
+
+        # Encoder pass
+        for encoder in self.encoders:
+            x = encoder(x)
+            enc_outputs.append(x)
+            x = self._downsample["1"](x)
+
+        logits = [self.to_logits["5"](enc_outputs[4])]
+
+        # Decoder pass
+        for d in range(4, 0, -1):
+            feats = [
+                self.connector_layers[f"d{d}e{s}"](enc_outputs[s - 1])
+                for s in range(1, d + 1)
+            ]
+            for layer in range(d + 1, 5):
+                feats.append(
+                    self.connector_layers[f"d{d}d{layer}"](dec_outputs[f"{layer}"])
+                )
+            feats.append(self.connector_layers[f"d{d}e5"](enc_outputs[4]))
+
+            combined_feats = self.decoders[d - 1](torch.cat(feats, 1))
+            logits.append(self.to_logits[f"{d}"](combined_feats))
+            dec_outputs[f"{d}"] = combined_feats
+
+        outputs = {"logits": logits}
+        return outputs
 
 
 class UNetPlusPlus(nn.Module):
@@ -180,9 +316,27 @@ def build_fpn() -> FeaturePyramidNetwork:
 
 
 if __name__ == "__main__":
-    model = FeaturePyramidNetwork()
+    # model = FeaturePyramidNetwork()
+    model = UNet3Plus(out_channels=1)
 
-    t = torch.rand(2, 3, 1024, 1024)
-    out = model(t)
+    model = model.to("cuda")
+    with torch.autocast(device_type="cuda", dtype=torch.float16):
+        for e in range(20):
+            t = torch.rand(2, 3, 480, 480).to("cuda")
+            out = model(t)
 
-    print(out[0].shape, out[1].shape, out[2].shape)
+            for logit in out:
+                print(logit.shape)
+
+    # total_params = sum(p.numel() for p in model.parameters())
+    # print(f"Total parameters: {total_params:,}")
+
+    # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # print(f"Trainable parameters: {trainable_params:,}")
+
+    # print(out[0].shape, out[1].shape, out[2].shape)
+
+    # model = tv_models.vgg16(weights=tv_models.VGG16_Weights.DEFAULT)
+    # print(model.features[0])
+    # for name, module in model.named_children():
+    #     print(f"{name}: {module}")
