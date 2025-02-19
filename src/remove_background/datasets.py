@@ -111,6 +111,19 @@ class MyVOCSegmentation(tv_datasets.VOCSegmentation):
         return img, mask
 
 
+def mc_collate_fn(batch):
+    images, labels, weights = zip(*batch)
+
+    inputs = {
+        "images": torch.stack(images, dim=0),
+    }
+    targets = {
+        "labels": torch.stack(labels, dim=0),
+    }
+    weights = torch.stack(weights, dim=0)
+    return inputs, targets, weights
+
+
 class MagazineCropDataset(Dataset):
     def __init__(self, split: str, augment_factor: int = 5, transforms=None):
         super(MagazineCropDataset, self).__init__()
@@ -202,7 +215,7 @@ class MagazineCropDataset(Dataset):
         )
 
         if self._transforms is not None:
-            image, labels, weights = self._transforms(image, labels, weights)
+            image, labels, weights = self._transforms(orig_image, labels, weights)
 
         return image, labels, weights
 
