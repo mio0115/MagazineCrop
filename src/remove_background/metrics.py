@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 
-class IOUMetric(nn.Module):
+class ModIOUMetric(nn.Module):
     """
     A transform that computes an approximate Intersection-over-Union (IoU) between
     two convex polygons (with 4 corners) by rasterizing onto a (height, width) grid.
@@ -24,7 +24,7 @@ class IOUMetric(nn.Module):
     def __init__(
         self, height: int, width: int, reduction: str = "mean", *args, **kwargs
     ):
-        super(IOUMetric, self).__init__(*args, **kwargs)
+        super(ModIOUMetric, self).__init__(*args, **kwargs)
         if reduction not in ["mean", "sum", "none"]:
             raise ValueError(f"Reduction '{reduction}' is not supported.")
 
@@ -96,6 +96,7 @@ class IOUMetric(nn.Module):
 
         return mask
 
+    @torch.no_grad()
     def forward(self, outputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """
         Calculate the intersection over union (IoU) for a predicted polygon and a target polygon.
@@ -127,32 +128,77 @@ class IOUMetric(nn.Module):
         return iou
 
 
-if __name__ == "__main__":
-    iou_metric = IOUMetric(640, 640)
+class IOUMetric(nn.Module):
+    """
+    A metric that computes Intersection-over-Union (IoU) between
+    masks by rasterizing onto a (height, width) grid.
 
-    pred = torch.tensor(
-        [
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-        ],
-        dtype=torch.float32,
-    )
-    target = torch.tensor(
-        [
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-            [[0, 0], [0, 100], [100, 0], [100, 100]],
-        ],
-        dtype=torch.float32,
-    )
+    Args:
+        height (int): The height of the grid for rasterization.
+        width (int): The width of the grid for rasterization.
+        reduction (str): Specifies how to reduce the IoU across the batch:
+                         'mean' | 'sum' | 'none'.
+                         Defaults to 'mean'.
+        threshold (float): Threshold
+    """
+
+    def __init__(
+        self,
+        threshold: float = 0.5,
+        reduction: str = "mean",
+        *args,
+        **kwargs,
+    ):
+        super(IOUMetric, self).__init__(*args, **kwargs)
+        if reduction not in ["mean", "sum", "none"]:
+            raise ValueError(f"Reduction '{reduction}' is not supported.")
+
+        self._reduction = reduction
+        self._thresh = threshold
+
+    @torch.no_grad()
+    def forward(
+        self, logits: list[torch.Tensor], targets: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Calculate the intersection over union (IoU) for a predicted polygon and a target polygon.
+
+        Args:
+            logits (list[Tensor]): shape (batch, H, W), the predicted polygon corners as (x, y).
+            targets (Tensor): shape (batch, H, W), the target polygon corners as (x, y).
+
+        Returns:
+            Tensor: scalar tensor if reduction is 'mean' or 'sum', otherwise tensor of shape (batch,).
+        """
+
+        ious = []
+        target_mask = targets >= 0.9
+        for logit in logits:
+            pred_mask = (logit.sigmoid() >= self._thresh).squeeze(1)
+
+            intersection = (pred_mask & target_mask).sum(dim=(1, 2))
+            union = (pred_mask | target_mask).sum(dim=(1, 2))
+            iou = intersection.float() / union.float().clamp_min(1e-6)
+
+            if self._reduction == "mean":
+                iou = iou.mean()
+            elif self._reduction == "sum":
+                iou = iou.sum()
+            ious.append(iou)
+
+        ious = torch.stack(ious)
+        if self._reduction == "mean":
+            ious = ious.mean()
+        elif self._reduction == "sum":
+            ious = ious.sum()
+        return ious
+
+
+if __name__ == "__main__":
+    iou_metric = IOUMetric()
+
+    pred = [torch.rand((4, 1, 640, 640)) for _ in range(5)]
+    target = torch.rand((640, 640)) > 0.5
 
     iou = iou_metric(pred, target)
     print(iou)
-    print(iou.shape)

@@ -1,6 +1,7 @@
 import os
 import time
 from math import ceil
+from typing import Optional
 
 import torch
 from torch import nn
@@ -16,6 +17,7 @@ from .transforms import (
 from ..utils.misc import move_to_device
 from ..utils.arg_parser import get_parser
 from .loss import ComboLoss
+from .metrics import IOUMetric
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
@@ -153,11 +155,13 @@ def mixed_precision_train(
     epochs: int,
     accumulation_steps: int = 8,
     scheduler: torch.optim.lr_scheduler = None,
+    metrics: Optional[dict[str, nn.Module]] = None,
 ):
     print("Training model...")
 
     start_epoch = 0
-    best_loss = float("inf")
+    best_iou = 0
+    scaler = GradScaler()
     if args.resume:
         model = torch.load(
             os.path.join(
@@ -170,10 +174,10 @@ def mixed_precision_train(
         )
         optimizer.load_state_dict(checkpoint["optimizer_state"])
         scheduler.load_state_dict(checkpoint["scheduler_state"])
-        best_loss = checkpoint["loss"]
+        scaler.load_state_dict(checkpoint["scaler_state"])
+        best_iou = checkpoint["iou"]
         start_epoch = checkpoint["epoch"] + 1
 
-    scaler = GradScaler()
     model = model.to(args.device)
     path_to_save = os.path.join(args.checkpoint_dir, args.save_as)
 
@@ -235,6 +239,7 @@ def mixed_precision_train(
         print(f"Epoch {epoch+1:>2}:\n\t{'Train Loss':<20}: {avg_loss:.6f}")
 
         running_vloss = 0.0
+        running_viou = 0.0
 
         model.eval()
         with torch.no_grad():
@@ -255,15 +260,19 @@ def mixed_precision_train(
                         weights=weights,
                     )
 
+                    viou = metrics["iou"](outputs["logits"], targets["labels"])
+                    running_viou += viou.item()
+
                 running_vloss += loss.item()
 
         avg_vloss = running_vloss / ind
+        avg_viou = running_viou / ind
 
         output_valid_message = ""
         output_valid_message += f"\t{'Valid Loss':<20}: {avg_vloss:.6f}\n"
 
-        if avg_vloss < best_loss:
-            best_loss = avg_vloss
+        if avg_viou > best_iou:
+            best_iou = avg_viou
             if not args.no_save:
                 if not os.path.isdir(path_to_save):
                     os.mkdir(path_to_save)
@@ -272,13 +281,14 @@ def mixed_precision_train(
                     "epoch": epoch,
                     "optimizer_state": optimizer.state_dict(),
                     "scheduler_state": scheduler.state_dict(),
-                    "loss": best_loss,
+                    "scaler_state": scaler.state_dict(),
+                    "iou": best_iou,
                 }
                 torch.save(states, os.path.join(path_to_save, "checkpoint.pth"))
 
             output_valid_message += "\tNew Record, Saved!"
         print(output_valid_message)
-        print(f"\t{'Best Loss':<20}: {best_loss:.6f}")
+        print(f"\t{'Best IoU':<20}: {best_iou:.6f}")
 
         epoch_end = time.time()
         min_t = (epoch_end - epoch_start) // 60
@@ -342,6 +352,7 @@ if __name__ == "__main__":
         pct_start=0.3,
     )
     loss_fn = ComboLoss(number_of_classes=1)
+    iou_metric = IOUMetric(threshold=0.5, reduction="mean")
 
     if args.mixed_precision:
         mixed_precision_train(
@@ -353,6 +364,7 @@ if __name__ == "__main__":
             epochs=args.epochs,
             accumulation_steps=args.accumulation_steps,
             scheduler=scheduler,
+            metrics={"iou": iou_metric},
         )
     else:
         train(
