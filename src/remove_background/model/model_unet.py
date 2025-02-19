@@ -103,7 +103,7 @@ def build_iterative_model(
 if __name__ == "__main__":
     model = build_iterative_model(num_iter=4)
 
-    img = torch.rand(size=(2, 3, 1024, 1024))
+    img = torch.rand(size=(2, 4, 1024, 1024))
 
     list_logits = model(img)
     for logits in list_logits:

@@ -653,7 +653,7 @@ def build_scanned_transform(split="train", reshape_size: int = 1024):
         tr_fn = v2.Compose(
             [
                 Rotate(),
-                RandomHorizontalFlip(not_flip_prob=0.6),
+                RandomHorizontalFlip(not_flip_prob=0.5),
                 RandomVerticalFlip(not_flip_prob=0.9),
                 RandomResizedCrop(
                     size=(reshape_size, reshape_size),
