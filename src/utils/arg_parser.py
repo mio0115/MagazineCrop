@@ -153,7 +153,7 @@ def dev_parser():
         "--edge-size",
         type=int,
         default=640,
-        choices=[640, 1024],
+        choices=[480, 640, 1024],
         dest="edge_size",
         help="height and width for src",
     )
