@@ -342,3 +342,14 @@ def compute_resized_shape(shape: tuple[int], scale: float = 1.0):
 
 def compute_dist_2d(p1, p2):
     return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+
+
+def move_to_device(
+    data: dict[str, torch.Tensor] | torch.Tensor, device: str | torch.device
+) -> dict[str, torch.Tensor]:
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+    elif isinstance(data, dict):
+        return {k: v.to(device) for k, v in data.items()}
+    else:
+        raise ValueError("Data should be either a dict or a tensor")

@@ -14,22 +14,12 @@ from .mod_transforms import (
     build_scanned_transform,
 )
 from ..utils.arg_parser import get_parser
+from ..utils.misc import move_to_device
 from .loss import ModComboLoss
 from .metrics import IOUMetric
 
 # to download model's weights, execute the following command:
 # scp <username>@<ip>:/home/ubuntu/projects/MagazineCrop/src/remove_background/checkpoints/<model_name> ./src/remove_background/checkpoints/
-
-
-def move_to_device(
-    data: dict[str, torch.Tensor] | torch.Tensor, device: str | torch.device
-) -> dict[str, torch.Tensor]:
-    if isinstance(data, torch.Tensor):
-        return data.to(device)
-    elif isinstance(data, dict):
-        return {k: v.to(device) for k, v in data.items()}
-    else:
-        raise ValueError("Data should be either a dict or a tensor")
 
 
 def poly_lr(
