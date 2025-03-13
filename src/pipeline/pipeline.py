@@ -101,10 +101,13 @@ class MagazineCropPipeline:
             device=self._device,
             verbose=self._verbose,
             new_size=self._tmp_shape,
-            model_name="test",
+            model_name="rm_bg_model",
         )
         predict_sp = SplitPage(
-            device=self._device, verbose=self._verbose, new_size=self._tmp_shape
+            device=self._device,
+            verbose=self._verbose,
+            new_size=self._tmp_shape,
+            model_name="sp_pg_model.pth",
         )
         self._split_pages = Combination(
             predict_fg,

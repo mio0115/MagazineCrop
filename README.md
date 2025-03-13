@@ -29,22 +29,27 @@ conda env create -f environment.yml
 ### 3. Download Models
 Download the required models and place them in the following directories:
 
-- Move `rm_bg_model.pth` to:
+- Create the directories (if they don't already exist):
+  ```bash
+  mkdir -p ./src/remove_background/checkpoints ./src/split_page/checkpoints
+  ```
+
+- Move `rm_bg_model.pth`:
     ```bash
-    <project_root>/src/remove_background/checkpoints
+    mv /path/to/rm_bg_model.pth <project_root>/src/remove_background/checkpoints/
     ```
 
-- Move `sp_pg_model.pth` to:
+- Move `sp_pg_model.pth`:
     ```bash
-    <project_root>/src/split_page/checkpoints
+    mv /path/to/sp_pg_model.pth <project_root>/src/split_page/checkpoints/
     ```
 
 ## Usage
 
 ### 1. Running Inference
-To perform inference and process your scanned images, run:
+To process your scanned images, run:
 ```bash
-python -m src.run --input-image /path/to/images/*.tiff --output-directory /path/to/output
+python -m src.run --input-image /path/to/images/<image_name>.tif --output-directory /path/to/output
 ```
 
 ### 2. Optional Parameters

@@ -261,7 +261,7 @@ class Combination(object):
         )
 
         # get the foreground mask
-        fg_mask = self._predict_fg(resized_img, is_gray=is_gray)
+        fg_mask = self._predict_fg(resized_img, is_gray=is_gray)[-1].squeeze(0)
         self._save_masks(resized_img, [fg_mask], "foreground_mask")
 
         if self._num_pages == 2:

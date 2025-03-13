@@ -137,10 +137,9 @@ class PredictForegroundV2(object):
             in_image = (
                 torch.tensor(image)[None, ...].permute(0, 3, 1, 2).float() / 255.0
             )
-            print(in_image.shape)
             in_image = in_image.to(self._model_device)
             logits = self._model(in_image)["logits"]
-            print(type(logits), len(logits))
+
             is_fg_prob = []
             for idx in return_logits_indices:
                 is_fg_prob.append(logits[idx].sigmoid().squeeze(0).cpu().numpy())
