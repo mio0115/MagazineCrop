@@ -1,4 +1,4 @@
-name: mag-crop
+name: mag-crop-infer
 channels:
   - defaults
   - https://repo.anaconda.com/pkgs/main
