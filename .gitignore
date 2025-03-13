@@ -5,6 +5,8 @@ data/
 
 test.py
 *.png
+mod_*.py
+inter_*.py
 
 *.txt
 script.py

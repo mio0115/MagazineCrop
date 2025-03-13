@@ -1,7 +1,8 @@
 import numpy as np
 
 from .perspective_transform_approach import PerspectiveTransformApproach
-from .thin_plate_spline_approach import ThinPlateSplineApproach
+
+# from .thin_plate_spline_approach import ThinPlateSplineApproach
 
 
 class Dewarp(object):

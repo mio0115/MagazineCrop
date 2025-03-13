@@ -116,6 +116,7 @@ class PredictForegroundV2(object):
                 "remove_background",
                 "checkpoints",
                 model_name,
+                f"{model_name}.pth",
             ),
             weights_only=False,
         )
@@ -129,7 +130,7 @@ class PredictForegroundV2(object):
         image: np.ndarray,
         is_gray: bool = False,
         return_prob: bool = False,
-        return_logits_indices: list[int] = [3],
+        return_logits_indices: list[int] = [-1],
     ) -> np.ndarray:
 
         with torch.no_grad():
@@ -138,7 +139,8 @@ class PredictForegroundV2(object):
             )
             print(in_image.shape)
             in_image = in_image.to(self._model_device)
-            logits = self._model(in_image)
+            logits = self._model(in_image)["logits"]
+            print(type(logits), len(logits))
             is_fg_prob = []
             for idx in return_logits_indices:
                 is_fg_prob.append(logits[idx].sigmoid().squeeze(0).cpu().numpy())

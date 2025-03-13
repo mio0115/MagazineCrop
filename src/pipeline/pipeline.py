@@ -5,9 +5,10 @@ from PIL import Image
 import numpy as np
 import cv2
 
-from ..remove_background.infer import PredictForeground
+from ..remove_background.infer import PredictForegroundV2
 from ..split_page.infer import SplitPage
 from ..dewarp_curl.dewarp import Dewarp
+from ..dewarp_curl.perspective_transform_approach import PerspectiveTransformApproach
 from .combination import Combination
 from ..utils.arg_parser import get_parser
 from ..utils.misc import compute_resized_shape
@@ -96,8 +97,11 @@ class MagazineCropPipeline:
         """
         Initialize the pipeline components based on the given arguments.
         """
-        predict_fg = PredictForeground(
-            device=self._device, verbose=self._verbose, new_size=self._tmp_shape
+        predict_fg = PredictForegroundV2(
+            device=self._device,
+            verbose=self._verbose,
+            new_size=self._tmp_shape,
+            model_name="test",
         )
         predict_sp = SplitPage(
             device=self._device, verbose=self._verbose, new_size=self._tmp_shape
@@ -109,7 +113,9 @@ class MagazineCropPipeline:
             verbose=self._verbose,
             save_mask_fn=self._save_mask_fn,
         )
-        self._fix_distortion = Dewarp(target_size=self._tmp_shape)
+        self._fix_distortion = Dewarp(
+            target_size=self._tmp_shape, transform=PerspectiveTransformApproach()
+        )
 
     def process(self, image: np.ndarray):
         """
